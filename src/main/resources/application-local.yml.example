@@ -1,0 +1,19 @@
+# Local overrides for zcode (DO NOT COMMIT real secrets)
+#
+# Copy next to this file as application-local.yml:
+#   copy application-local.yml.example application-local.yml
+#
+# Default Spring profile is `local`, so this file is picked up automatically when present.
+# Prefer environment variables in shared / CI environments.
+
+zcode:
+  llm:
+    api: anthropic
+    base-url: https://api.anthropic.com
+    api-key: your-api-key-here
+    model: claude-opus-4-6
+    max-tokens: 8192
+    timeout-seconds: 180
+  agent:
+    # chat | read-only | default | auto-confirm
+    permission-mode: auto-confirm

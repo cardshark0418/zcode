@@ -1,0 +1,40 @@
+server:
+  port: 8080
+
+zcode:
+  llm:
+    # Set via env or application-local.yml (see application-local.yml.example)
+    api: ${ZCODE_LLM_API:anthropic}
+    base-url: ${ZCODE_LLM_BASE_URL:}
+    api-key: ${ZCODE_LLM_API_KEY:}
+    model: ${ZCODE_LLM_MODEL:claude-opus-4-6}
+    max-tokens: 8192
+    timeout-seconds: 180
+  memory:
+    # empty = ~/.zcode/sessions
+    dir: ${ZCODE_MEMORY_DIR:}
+    # keep last N user/assistant pairs as raw dialogue
+    max-turns: ${ZCODE_MEMORY_MAX_TURNS:20}
+    # soft context budget (heuristic tokens); compact at budget * threshold
+    context-budget: ${ZCODE_MEMORY_CONTEXT_BUDGET:100000}
+    compact-threshold: ${ZCODE_MEMORY_COMPACT_THRESHOLD:0.8}
+    compact-max-tokens: ${ZCODE_MEMORY_COMPACT_MAX_TOKENS:2048}
+  agent:
+    enabled: ${ZCODE_AGENT_ENABLED:true}
+    # empty = process working directory
+    workspace: ${ZCODE_WORKSPACE:}
+    max-iterations: ${ZCODE_AGENT_MAX_ITERATIONS:20}
+    bash-timeout-seconds: ${ZCODE_BASH_TIMEOUT:60}
+    max-tool-output-chars: ${ZCODE_TOOL_OUTPUT_CHARS:30000}
+    # chat | read-only | default | auto-confirm
+    permission-mode: ${ZCODE_PERMISSION_MODE:auto-confirm}
+  trace:
+    enabled: ${ZCODE_TRACE_ENABLED:true}
+    preview-chars: ${ZCODE_TRACE_PREVIEW_CHARS:500}
+
+spring:
+  application:
+    name: zcode
+  # Loads application-local.yml when present (never commit secrets there)
+  profiles:
+    default: local
