@@ -35,7 +35,11 @@ public class ZcodeApplication {
     }
 
     private static boolean isServe(String[] args) {
-        return args.length > 0 && "serve".equalsIgnoreCase(args[0]);
+        if (args.length == 0) {
+            return false;
+        }
+        String cmd = args[0];
+        return "serve".equalsIgnoreCase(cmd) || "server".equalsIgnoreCase(cmd);
     }
 
     private static String[] stripServe(String[] args) {

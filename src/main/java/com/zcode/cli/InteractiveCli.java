@@ -3,7 +3,8 @@ package com.zcode.cli;
 import com.zcode.agent.AgentService;
 import com.zcode.agent.InstructionsLoader;
 import com.zcode.agent.SkillCatalog;
-import com.zcode.config.LlmProperties;
+import com.zcode.checkpoint.CheckpointService;
+import com.zcode.config.LlmRuntime;
 import com.zcode.memory.ChatMessage;
 import com.zcode.memory.CompactionService;
 import com.zcode.memory.ContextView;
@@ -13,6 +14,7 @@ import com.zcode.permission.PermissionMode;
 import com.zcode.permission.PermissionService;
 import com.zcode.trace.EventStore;
 import com.zcode.trace.TraceContext;
+import com.zcode.trace.TraceContextHolder;
 import com.zcode.trace.TraceEvent;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -20,6 +22,7 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,7 +36,7 @@ import org.springframework.stereotype.Component;
 public class InteractiveCli {
 
     private final AgentService agentService;
-    private final LlmProperties llmProperties;
+    private final LlmRuntime llmProperties;
     private final SessionStore sessionStore;
     private final CompactionService compactionService;
     private final ToolRegistry toolRegistry;
@@ -41,6 +44,7 @@ public class InteractiveCli {
     private final SkillCatalog skillCatalog;
     private final EventStore eventStore;
     private final PermissionService permissionService;
+    private final CheckpointService checkpointService;
 
     private String sessionId;
     private BufferedReader activeReader;
@@ -49,14 +53,15 @@ public class InteractiveCli {
 
     public InteractiveCli(
             AgentService agentService,
-            LlmProperties llmProperties,
+            LlmRuntime llmProperties,
             SessionStore sessionStore,
             CompactionService compactionService,
             ToolRegistry toolRegistry,
             InstructionsLoader instructionsLoader,
             SkillCatalog skillCatalog,
             EventStore eventStore,
-            PermissionService permissionService) {
+            PermissionService permissionService,
+            CheckpointService checkpointService) {
         this.agentService = agentService;
         this.llmProperties = llmProperties;
         this.sessionStore = sessionStore;
@@ -66,6 +71,7 @@ public class InteractiveCli {
         this.skillCatalog = skillCatalog;
         this.eventStore = eventStore;
         this.permissionService = permissionService;
+        this.checkpointService = checkpointService;
     }
 
     public void start() {
@@ -221,19 +227,34 @@ public class InteractiveCli {
         }
 
         String turnId = newTurnId();
+        TraceContext ctx = TraceContext.of(sessionId, turnId);
+        TraceContextHolder.set(ctx);
         stopSpinner();
         try {
+            checkpointService.clearUndo(sessionId);
+
             eventStore.emit(
                     "turn.start",
-                    TraceContext.of(sessionId, turnId),
+                    ctx,
                     eventStore.mapOf("userPreview", eventStore.preview(input)));
+
+            sessionStore.maybeAutoTitleFromUserMessage(sessionId, input);
 
             if (compactionService.maybeCompact(sessionId, input, turnId)) {
                 Cui.status("memory compacted");
             }
 
             ContextView view = sessionStore.buildContextView(sessionId);
+            String system = agentService.buildSystemPrompt(view.systemSummary());
+            eventStore.emit(
+                    "request.header",
+                    ctx,
+                    eventStore.mapOf(
+                            "system", system,
+                            "messageCount", view.messages().size(),
+                            "hasSummary", view.hasSummary()));
             ChatMessage userMsg = ChatMessage.user(input);
+            sessionStore.append(sessionId, userMsg);
 
             activeSpinner.set(Cui.spinner("thinking"));
 
@@ -281,6 +302,9 @@ public class InteractiveCli {
                         eventStore.mapOf("ok", false, "assistantPreview", ""));
             } else {
                 for (ChatMessage m : outcome.newMessages()) {
+                    if (m != null && userMsg.id() != null && userMsg.id().equals(m.id())) {
+                        continue;
+                    }
                     sessionStore.append(sessionId, m);
                 }
                 eventStore.emit(
@@ -308,6 +332,8 @@ public class InteractiveCli {
                 Cui.error(msg);
             }
             System.out.println();
+        } finally {
+            TraceContextHolder.clear();
         }
         return true;
     }
@@ -319,12 +345,18 @@ public class InteractiveCli {
                 int n = Integer.parseInt(parts[1]);
                 List<TraceEvent> events = eventStore.load(sessionId, Math.max(1, n));
                 Cui.traceEvents(events);
-                Cui.status("file  " + eventStore.eventsFile(sessionId));
+                Path file = sessionStore.isEventLog(sessionId)
+                        ? sessionStore.sessionFile(sessionId)
+                        : eventStore.eventsFile(sessionId);
+                Cui.status("file  " + file);
                 System.out.println();
             } else {
                 List<TraceEvent> events = eventStore.loadLatestTurn(sessionId);
                 Cui.traceEvents(events);
-                Cui.status("file  " + eventStore.eventsFile(sessionId));
+                Path file = sessionStore.isEventLog(sessionId)
+                        ? sessionStore.sessionFile(sessionId)
+                        : eventStore.eventsFile(sessionId);
+                Cui.status("file  " + file);
                 System.out.println();
             }
         } catch (NumberFormatException e) {

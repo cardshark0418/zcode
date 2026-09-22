@@ -3,6 +3,7 @@ package com.zcode.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.zcode.checkpoint.CheckpointService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,6 +11,12 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class WriteTool implements Tool {
+
+    private final CheckpointService checkpointService;
+
+    public WriteTool(CheckpointService checkpointService) {
+        this.checkpointService = checkpointService;
+    }
 
     @Override
     public String name() {
@@ -39,9 +46,24 @@ public class WriteTool implements Tool {
         if (content == null) {
             return ToolResult.error("content is required");
         }
+        byte[] beforeBytes = null;
+        if (Files.isRegularFile(path)) {
+            beforeBytes = Files.readAllBytes(path);
+        }
+        byte[] afterBytes = content.getBytes(StandardCharsets.UTF_8);
         WorkspacePaths.ensureParent(path);
         Files.writeString(path, content, StandardCharsets.UTF_8);
-        return ToolResult.ok("wrote " + path + " (" + content.length() + " chars)");
+        checkpointService.recordMutate(path, beforeBytes, afterBytes);
+        StringBuilder out = new StringBuilder();
+        out.append("wrote ").append(path).append(" (").append(content.length()).append(" chars)\n\n");
+        out.append("```diff\n");
+        out.append("+++ ").append(path.getFileName()).append('\n');
+        String preview = content.length() > 4000 ? content.substring(0, 4000) + "\n…(truncated)" : content;
+        for (String line : preview.split("\n", -1)) {
+            out.append('+').append(line).append('\n');
+        }
+        out.append("```");
+        return ToolResult.ok(out.toString());
     }
 
     private static String text(JsonNode input, String field) {

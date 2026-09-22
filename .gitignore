@@ -16,3 +16,4 @@ META-INF/
 last-chat-request.json
 last-compact-request.json
 *.events.jsonl
+*.meta.json

@@ -30,7 +30,7 @@ public class BashTool implements Tool {
     @Override
     public String description() {
         return "Run a shell command in the workspace. Windows uses PowerShell; other OS use bash -lc. "
-                + "Prefer this for git/npm/build. Do not use for reading/writing files — use read/write/edit/glob/grep.";
+                + "Prefer this for git/npm/build. Do not use for reading/writing/deleting files — use read/write/edit/delete/glob/grep.";
     }
 
     @Override

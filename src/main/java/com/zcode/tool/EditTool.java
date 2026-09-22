@@ -3,6 +3,7 @@ package com.zcode.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.zcode.checkpoint.CheckpointService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,6 +11,12 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class EditTool implements Tool {
+
+    private final CheckpointService checkpointService;
+
+    public EditTool(CheckpointService checkpointService) {
+        this.checkpointService = checkpointService;
+    }
 
     @Override
     public String name() {
@@ -57,9 +64,28 @@ public class EditTool implements Tool {
         if (!replaceAll && count > 1) {
             return ToolResult.error("old_string found " + count + " times; set replace_all=true or provide a more unique string");
         }
-        String updated = replaceAll ? original.replace(oldString, newString) : original.replaceFirst(java.util.regex.Pattern.quote(oldString), java.util.regex.Matcher.quoteReplacement(newString));
+        String updated = replaceAll
+                ? original.replace(oldString, newString)
+                : original.replaceFirst(
+                        java.util.regex.Pattern.quote(oldString),
+                        java.util.regex.Matcher.quoteReplacement(newString));
+        byte[] beforeBytes = original.getBytes(StandardCharsets.UTF_8);
+        byte[] afterBytes = updated.getBytes(StandardCharsets.UTF_8);
         Files.writeString(path, updated, StandardCharsets.UTF_8);
-        return ToolResult.ok("edited " + path + " (" + (replaceAll ? count : 1) + " replacement(s))");
+        checkpointService.recordMutate(path, beforeBytes, afterBytes);
+        StringBuilder out = new StringBuilder();
+        out.append("edited ").append(path).append(" (").append(replaceAll ? count : 1).append(" replacement(s))\n\n");
+        out.append("```diff\n");
+        out.append("--- a/").append(path.getFileName()).append('\n');
+        out.append("+++ b/").append(path.getFileName()).append('\n');
+        for (String line : oldString.split("\n", -1)) {
+            out.append('-').append(line).append('\n');
+        }
+        for (String line : newString.split("\n", -1)) {
+            out.append('+').append(line).append('\n');
+        }
+        out.append("```");
+        return ToolResult.ok(out.toString());
     }
 
     private static int countOccurrences(String haystack, String needle) {

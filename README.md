@@ -11,7 +11,7 @@ Java coding agent CLI（Spring Boot）：终端里对话、调工具改代码，
 - **Trace** — `~/.zcode/sessions/<id>.events.jsonl`，CLI `/trace`
 - **Instructions / skills** — `ZCODE.md` / `CLAUDE.md` / `AGENTS.md`，以及 `.zcode/skills/`
 
-可选：`zcode serve` 启动最小网页聊天（目前无 agent/工具，仅作演示）。
+可选：`zcode serve` 打开 Web 控制台（对标 harness 风格：侧栏会话、流式对话、工具行、权限模式、人机确认）。
 
 ## Requirements
 

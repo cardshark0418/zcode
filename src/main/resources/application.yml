@@ -38,3 +38,6 @@ spring:
   # Loads application-local.yml when present (never commit secrets there)
   profiles:
     default: local
+  mvc:
+    async:
+      request-timeout: 1800000

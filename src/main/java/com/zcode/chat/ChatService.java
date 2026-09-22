@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.zcode.config.LlmProperties;
+import com.zcode.config.LlmRuntime;
 import com.zcode.memory.ChatMessage;
 import com.zcode.memory.ToolCall;
 import com.zcode.trace.EventStore;
@@ -32,14 +32,14 @@ import org.springframework.util.StringUtils;
 @Service
 public class ChatService {
 
-    private final LlmProperties llmProperties;
+    private final LlmRuntime llmProperties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final AnthropicMessageCodec anthropicMessageCodec;
     private final EventStore eventStore;
 
     public ChatService(
-            LlmProperties llmProperties,
+            LlmRuntime llmProperties,
             ObjectMapper objectMapper,
             AnthropicMessageCodec anthropicMessageCodec,
             EventStore eventStore) {

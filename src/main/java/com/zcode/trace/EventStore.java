@@ -2,6 +2,7 @@ package com.zcode.trace;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zcode.config.TraceProperties;
+import com.zcode.memory.SessionEvent;
 import com.zcode.memory.SessionStore;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,7 +17,9 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Append-only runtime event log: {@code ~/.zcode/sessions/<id>.events.jsonl}.
+ * Runtime / session event writer. For event-sourced sessions, events append to the
+ * same {@code <id>.jsonl} as chat history (dsh-style). Legacy ChatMessage sessions
+ * still use a sidecar {@code <id>.events.jsonl}.
  */
 @Component
 public class EventStore {
@@ -48,6 +51,11 @@ public class EventStore {
             return;
         }
         try {
+            boolean eventLog = sessionStore.isEventLog(ctx.sessionId());
+            if (eventLog) {
+                sessionStore.appendEvent(SessionEvent.of(ctx.sessionId(), ctx.turnId(), type, payload));
+                return;
+            }
             Files.createDirectories(sessionStore.sessionsDir());
             TraceEvent event = TraceEvent.of(ctx.sessionId(), ctx.turnId(), type, payload);
             String line = objectMapper.writeValueAsString(event) + "\n";
@@ -86,20 +94,29 @@ public class EventStore {
         return m;
     }
 
+    /**
+     * Load trajectory events: unified session log when event-sourced, else sidecar file.
+     * Returned as {@link TraceEvent} for API compatibility (same shape as {@link SessionEvent}).
+     */
     public List<TraceEvent> load(String sessionId, int limit) throws IOException {
-        Path file = eventsFile(sessionId);
-        if (!Files.isRegularFile(file)) {
-            return List.of();
-        }
         List<TraceEvent> all = new ArrayList<>();
-        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
+        if (sessionStore.isEventLog(sessionId)) {
+            for (SessionEvent e : sessionStore.loadEvents(sessionId)) {
+                all.add(new TraceEvent(e.id(), e.ts(), e.sessionId(), e.turnId(), e.type(), e.payload()));
+            }
+        } else {
+            Path file = eventsFile(sessionId);
+            if (Files.isRegularFile(file)) {
+                try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.isEmpty()) {
+                            continue;
+                        }
+                        all.add(objectMapper.readValue(line, TraceEvent.class));
+                    }
                 }
-                all.add(objectMapper.readValue(line, TraceEvent.class));
             }
         }
         if (limit <= 0 || all.size() <= limit) {

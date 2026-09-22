@@ -8,16 +8,16 @@ import java.util.Set;
  */
 public enum PermissionMode {
     /** Conversation only — no tools offered to the model. */
-    CHAT("chat", "conversation only, no tools"),
+    CHAT("chat", "仅对话，不使用工具"),
 
     /** Read / search / web / skill — no file writes or shell. */
-    READ_ONLY("read-only", "read-only tools (no write/edit/bash)"),
+    READ_ONLY("read-only", "只读工具（不可写入/编辑/终端）"),
 
     /** File edits allowed; bash requires interactive approval. */
-    DEFAULT("default", "edit workspace files; bash needs confirm"),
+    DEFAULT("default", "可编辑工作区文件；bash 需确认"),
 
     /** All tools auto-approved. */
-    AUTO_CONFIRM("auto-confirm", "full tools, no prompts");
+    AUTO_CONFIRM("auto-confirm", "全部工具可用，无需确认");
 
     private static final Set<String> READ_TOOLS = Set.of(
             "read", "glob", "grep", "webfetch", "websearch", "skill", "ask_user", "todowrite");
@@ -67,7 +67,7 @@ public enum PermissionMode {
         String name = toolName.trim().toLowerCase(Locale.ROOT);
         return switch (this) {
             case CHAT, READ_ONLY, AUTO_CONFIRM -> false;
-            case DEFAULT -> "bash".equals(name);
+            case DEFAULT -> "bash".equals(name) || "delete".equals(name);
         };
     }
 
@@ -97,15 +97,16 @@ public enum PermissionMode {
         return sb.toString();
     }
 
-    /** Hint for system prompt. */
+    /** 写入系统提示的权限说明。 */
     public String systemHint() {
         return switch (this) {
-            case CHAT -> "Permission mode: chat. You have no tools. Answer from context only.";
+            case CHAT -> "工具：chat 模式下禁用。仅根据上下文回答，不要调用工具。";
             case READ_ONLY ->
-                    "Permission mode: read-only. You may read/search/web/skill, but must NOT write files or run shell.";
+                    "可用工具：read、glob、grep、webfetch、websearch、skill、ask_user、todowrite。"
+                            + "禁止写文件、edit、delete 或运行 bash。";
             case DEFAULT ->
-                    "Permission mode: default. You may edit files in the workspace. Shell (bash) requires user approval.";
-            case AUTO_CONFIRM -> "Permission mode: auto-confirm. Full tools available without prompts.";
+                    "工具：全开。可编辑/删除工作区文件。运行 bash 或 delete 前需要用户确认。";
+            case AUTO_CONFIRM -> "工具：全开且自动批准（无需确认）。";
         };
     }
 }

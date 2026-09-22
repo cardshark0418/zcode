@@ -1,184 +1,251 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>zcode</title>
-  <style>
-    :root {
-      --bg: #0f1419;
-      --panel: #1a2332;
-      --text: #e7ecf3;
-      --muted: #8b9bb4;
-      --accent: #3d8bfd;
-      --user: #243447;
-      --bot: #1e2a3a;
-      --border: #2a3a4f;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: radial-gradient(1200px 600px at 10% -10%, #1b2a44, var(--bg));
-      color: var(--text);
-      display: flex;
-      justify-content: center;
-      padding: 24px;
-    }
-    .app {
-      width: min(840px, 100%);
-      height: calc(100vh - 48px);
-      background: color-mix(in srgb, var(--panel) 92%, black);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-    }
-    header h1 {
-      margin: 0;
-      font-size: 1.1rem;
-      letter-spacing: 0.04em;
-    }
-    header p {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-    #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .msg {
-      max-width: 85%;
-      padding: 10px 14px;
-      border-radius: 12px;
-      white-space: pre-wrap;
-      line-height: 1.5;
-      font-size: 0.95rem;
-    }
-    .msg.user {
-      align-self: flex-end;
-      background: var(--user);
-    }
-    .msg.assistant {
-      align-self: flex-start;
-      background: var(--bot);
-      border: 1px solid var(--border);
-    }
-    .msg.error {
-      align-self: stretch;
-      background: #3a1f24;
-      border: 1px solid #7a3038;
-      color: #ffc9cf;
-    }
-    form {
-      display: flex;
-      gap: 10px;
-      padding: 14px;
-      border-top: 1px solid var(--border);
-    }
-    textarea {
-      flex: 1;
-      resize: none;
-      min-height: 52px;
-      max-height: 140px;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #121a26;
-      color: var(--text);
-      font: inherit;
-    }
-    button {
-      border: 0;
-      border-radius: 10px;
-      padding: 0 18px;
-      background: var(--accent);
-      color: white;
-      font: inherit;
-      cursor: pointer;
-    }
-    button:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-  </style>
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
   <div class="app">
-    <header>
-      <h1>zcode</h1>
-      <p>最小对话骨架 · 无记忆 · 无工具</p>
-    </header>
-    <div id="messages"></div>
-    <form id="chat-form">
-      <textarea id="input" placeholder="输入消息，Enter 发送，Shift+Enter 换行" rows="2"></textarea>
-      <button type="submit" id="send">发送</button>
-    </form>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <span class="brand-name">zcode</span>
+        </div>
+        <button type="button" class="icon-btn" id="btnCollapse" title="收起侧栏" aria-label="收起侧栏">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+      </div>
+      <button type="button" class="btn-new" id="btnNew">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span>新会话</span>
+      </button>
+      <div class="session-search-wrap">
+        <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="search" id="sessionSearch" class="session-search" placeholder="搜索会话…" autocomplete="off" />
+      </div>
+      <div class="session-list" id="sessionList"></div>
+      <div class="sidebar-foot">
+        <div class="meta-chip" id="workspaceChip">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4V7z"/><path d="M12 3v18M3 7l9 4 9-4"/></svg>
+          <span id="workspaceChipText">workspace</span>
+        </div>
+        <button type="button" class="foot-link" id="btnSettings">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>设置</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="center">
+      <header class="session-header">
+        <div>
+          <div class="session-title" id="sessionTitle">Session</div>
+          <div class="session-sub" id="sessionSub"></div>
+          <div class="view-tabs" role="tablist">
+            <button type="button" class="view-tab active" data-view="chat" id="tabChat">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H8l-3 3V5z"/></svg>
+              <span>对话</span>
+            </button>
+            <button type="button" class="view-tab" data-view="trace" id="tabTrace">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>
+              <span>流</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div class="scrollport" id="scrollport">
+        <div class="transcript" id="transcript">
+          <div class="hero" id="hero">
+            <h1>zcode</h1>
+            <p>编程代理控制台 — 工具、记忆、权限。</p>
+          </div>
+        </div>
+        <div class="trace-view hidden" id="traceView">
+          <div class="trace-toolbar">
+            <div class="trace-search-wrap">
+              <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <input type="search" id="traceSearch" class="trace-search" placeholder="搜索轨迹…" autocomplete="off" />
+            </div>
+            <span class="muted" id="traceMeta">runtime events</span>
+            <button type="button" class="btn-ghost sm" id="btnRefreshTrace">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
+              <span>刷新</span>
+            </button>
+          </div>
+          <div class="trace-stats" id="traceStats"></div>
+          <div class="trace-turns" id="traceTurns"></div>
+          <div class="trace-empty muted" id="traceEmpty">暂无轨迹事件</div>
+        </div>
+      </div>
+
+      <div class="composer-seat">
+        <div class="undo-bar hidden" id="undoBar">
+          <span>已回滚到检查点</span>
+          <button type="button" class="btn-ghost sm" id="btnUndoRestore">撤销回滚</button>
+        </div>
+        <div class="composer-card">
+          <textarea id="input" rows="2" placeholder="给 zcode 发消息…" ></textarea>
+          <div class="composer-bar">
+            <div class="composer-left">
+              <div class="cfg-wrap" id="modelWrap">
+                <button type="button" class="cfg-pill" id="modelPill" aria-haspopup="true" aria-expanded="false">
+                  <svg class="ico cfg-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 4.5L19 9l-3.5 3.4.8 4.9L12 15.3 7.7 17.3l.8-4.9L5 9l4.8-1.5L12 3z"/></svg>
+                  <span class="cfg-pill-text" id="modelPillText">model</span>
+                  <svg class="ico cfg-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
+                </button>
+                <div class="cfg-popover hidden" id="modelPopover" role="menu">
+                  <div class="cfg-row static">
+                    <span class="cfg-label">模型</span>
+                    <span class="cfg-value" id="cfgModelValue">—</span>
+                  </div>
+                </div>
+              </div>
+              <div class="cfg-wrap" id="modeWrap">
+                <button type="button" class="cfg-pill" id="modePill" aria-haspopup="true" aria-expanded="false">
+                  <span class="cfg-mode-ico" id="modePillIcon" aria-hidden="true"></span>
+                  <span class="cfg-pill-text" id="modePillText">mode</span>
+                  <svg class="ico cfg-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
+                </button>
+                <div class="cfg-popover hidden" id="modePopover" role="menu">
+                  <div class="cfg-mode-list" id="cfgModeList"></div>
+                </div>
+              </div>
+            </div>
+            <div class="composer-right">
+              <button type="button" class="btn-send" id="btnSend" title="发送" aria-label="发送">
+                <svg class="ico send-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
   </div>
-  <script>
-    const messagesEl = document.getElementById("messages");
-    const form = document.getElementById("chat-form");
-    const input = document.getElementById("input");
-    const sendBtn = document.getElementById("send");
 
-    function appendMessage(role, text) {
-      const el = document.createElement("div");
-      el.className = "msg " + role;
-      el.textContent = text;
-      messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      return el;
-    }
+  <div class="modal-mask hidden" id="settingsMask">
+    <div class="modal settings-modal">
+      <div class="modal-head">
+        <strong>设置</strong>
+        <div class="modal-head-actions">
+          <button type="button" class="btn-ghost sm" id="btnOpenLlmFile" title="复制配置文件路径">打开配置文件</button>
+          <button type="button" class="icon-btn" id="btnCloseSettings" title="关闭" aria-label="关闭">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="settings-layout">
+        <nav class="settings-nav" aria-label="设置分类">
+          <button type="button" class="settings-nav-item active" data-settings-tab="general">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>通用设置</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="models">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+            <span>模型</span>
+          </button>
+        </nav>
+        <div class="settings-panels">
+          <section class="settings-panel active" data-settings-panel="general" id="settingsPanelGeneral">
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">权限</div>
+                <div class="settings-row-desc">控制工具是否可用及是否需确认</div>
+              </div>
+              <select id="settingsMode" class="settings-control"></select>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">工作区</div>
+                <div class="settings-row-desc">工具读写的根目录</div>
+              </div>
+              <div class="settings-value mono" id="settingsWorkspace">—</div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">当前模型</div>
+                <div class="settings-row-desc">生效中的模型 ID</div>
+              </div>
+              <div class="settings-value" id="settingsModelLabel">—</div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">工具</div>
+                <div class="settings-row-desc">当前权限下可用的工具</div>
+              </div>
+              <div class="settings-value" id="settingsTools">—</div>
+            </div>
+          </section>
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const message = input.value.trim();
-      if (!message) return;
+          <section class="settings-panel" data-settings-panel="models" id="settingsPanelModels">
+            <p class="muted settings-intro">填入各提供方的 API 密钥与地址。保存在本机，立即生效；环境变量优先且只读。</p>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">API 协议</div>
+                <div class="settings-row-desc">anthropic 走 Messages；openai 走 Chat Completions</div>
+              </div>
+              <select id="llmApi" class="settings-control">
+                <option value="anthropic">anthropic</option>
+                <option value="openai">openai</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">API 地址</div>
+                <div class="settings-row-desc">Base URL，不含具体路径</div>
+              </div>
+              <input type="url" id="llmBaseUrl" class="settings-control wide" placeholder="https://api.example.com" autocomplete="off" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">API Key</div>
+                <div class="settings-row-desc" id="llmKeyHint">密钥不会回显；留空则保留已有配置</div>
+              </div>
+              <input type="password" id="llmApiKey" class="settings-control wide" placeholder="输入 API Key" autocomplete="off" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">模型</div>
+                <div class="settings-row-desc">请求使用的模型名称</div>
+              </div>
+              <input type="text" id="llmModel" class="settings-control wide" placeholder="claude-opus-4-6" autocomplete="off" />
+            </div>
+            <div class="settings-panel-foot">
+              <span class="llm-status" id="llmStatus">—</span>
+              <button type="button" class="btn-primary" id="btnSaveLlm">保存</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
 
-      appendMessage("user", message);
-      input.value = "";
-      sendBtn.disabled = true;
+  <div class="modal-mask hidden" id="restoreMask">
+    <div class="modal restore-modal">
+      <div class="modal-head">
+        <strong>丢弃此检查点之后的所有更改？</strong>
+        <button type="button" class="icon-btn" id="btnCloseRestore" title="关闭" aria-label="关闭">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="muted restore-sub">之后仍可撤销</p>
+        <div class="restore-actions">
+          <label class="restore-dontask">
+            <input type="checkbox" id="restoreDontAsk" />
+            <span>不再询问</span>
+          </label>
+          <div class="restore-btns">
+            <button type="button" class="btn-ghost" id="btnRestoreCancel">取消</button>
+            <button type="button" class="btn-primary" id="btnRestoreContinue">继续</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-      const pending = appendMessage("assistant", "思考中…");
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          pending.className = "msg error";
-          pending.textContent = data.error || ("请求失败: " + res.status);
-        } else {
-          pending.textContent = data.reply || "(空回复)";
-        }
-      } catch (err) {
-        pending.className = "msg error";
-        pending.textContent = String(err);
-      } finally {
-        sendBtn.disabled = false;
-        input.focus();
-      }
-    });
-
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        form.requestSubmit();
-      }
-    });
-  </script>
+  <script src="/app.js"></script>
 </body>
 </html>
