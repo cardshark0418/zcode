@@ -68,6 +68,12 @@ public class AgentTurnService {
         try {
             checkpointService.clearUndo(sessionId);
 
+            // Supersede unanswered user lines left by restore-to-checkpoint (open intents).
+            List<String> pruned = sessionStore.dropTrailingUnansweredUserMessages(sessionId);
+            if (!pruned.isEmpty()) {
+                emit.accept("history.prune", Map.of("droppedUserIds", pruned));
+            }
+
             eventStore.emit(
                     "turn.start",
                     ctx,

@@ -55,15 +55,17 @@ public class SessionController {
         this.objectMapper = objectMapper;
     }
 
-    public record CreateSessionRequest(Boolean resume) {}
+    public record CreateSessionRequest(Boolean resume, String workspace) {}
 
     public record RenameSessionRequest(String title) {}
+
+    public record WorkspaceBody(String workspace) {}
 
     public record TurnRequest(String message) {}
 
     public record InteractionReply(String answer, Boolean approved) {}
 
-    public record RestoreRequest(String eventId) {}
+    public record RestoreRequest(String eventId, Boolean force) {}
 
     @GetMapping
     public List<Map<String, Object>> list() throws IOException {
@@ -73,6 +75,7 @@ public class SessionController {
                     m.put("id", s.id());
                     m.put("title", s.title());
                     m.put("displayName", s.displayName());
+                    m.put("workspace", s.workspace());
                     m.put("renamed", sessionStore.isTitleRenamed(s.id()));
                     m.put("mtimeMs", s.mtimeMs());
                     m.put("messageCount", s.messageCount());
@@ -108,9 +111,32 @@ public class SessionController {
         if (req != null && Boolean.TRUE.equals(req.resume())) {
             id = sessionStore.resumeOrCreate();
         } else {
-            id = sessionStore.createSession();
+            String ws = req == null ? null : req.workspace();
+            id = sessionStore.createSession(ws);
         }
-        return Map.of("sessionId", id);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("sessionId", id);
+        m.put("workspace", sessionStore.readWorkspace(id));
+        return m;
+    }
+
+    @PutMapping("/{sessionId}/workspace")
+    public Map<String, Object> setWorkspace(
+            @PathVariable String sessionId, @RequestBody WorkspaceBody body) throws IOException {
+        requireSession(sessionId);
+        if (agentTurnService.isBusy(sessionId)) {
+            throw new IllegalStateException("session busy");
+        }
+        sessionStore.setWorkspace(sessionId, body == null ? null : body.workspace());
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", sessionId);
+        m.put("workspace", sessionStore.readWorkspace(sessionId));
+        return m;
+    }
+
+    @GetMapping("/workspaces")
+    public Map<String, Object> workspaces() throws IOException {
+        return Map.of("workspaces", sessionStore.listKnownWorkspaces());
     }
 
     @GetMapping("/{sessionId}/messages")
@@ -151,11 +177,24 @@ public class SessionController {
         if (agentTurnService.isBusy(sessionId)) {
             throw new IllegalStateException("session busy");
         }
-        CheckpointService.RestoreResult result = checkpointService.restoreTo(sessionId, body.eventId().trim());
+        boolean force = Boolean.TRUE.equals(body.force());
+        CheckpointService.RestoreResult result =
+                checkpointService.restoreTo(sessionId, body.eventId().trim(), force);
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("ok", true);
+        m.put("ok", !result.needsConfirm());
+        m.put("needsConfirm", result.needsConfirm());
         m.put("filesRestored", result.filesRestored());
         m.put("undoAvailable", result.undoAvailable());
+        m.put(
+                "conflicts",
+                result.conflicts().stream()
+                        .map(c -> {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            row.put("path", c.path());
+                            row.put("reason", c.reason());
+                            return row;
+                        })
+                        .toList());
         return m;
     }
 

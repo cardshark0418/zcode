@@ -11,7 +11,7 @@ zcode:
     max-tokens: 8192
     timeout-seconds: 180
   memory:
-    # empty = ~/.zcode/sessions
+    # empty = <workspace>/.zcode/sessions
     dir: ${ZCODE_MEMORY_DIR:}
     # keep last N user/assistant pairs as raw dialogue
     max-turns: ${ZCODE_MEMORY_MAX_TURNS:20}

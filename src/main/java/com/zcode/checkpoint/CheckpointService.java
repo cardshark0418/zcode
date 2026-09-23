@@ -3,7 +3,7 @@ package com.zcode.checkpoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.zcode.config.AgentProperties;
+import com.zcode.config.WorkspaceService;
 import com.zcode.memory.SessionEvent;
 import com.zcode.memory.SessionStore;
 import com.zcode.trace.TraceContextHolder;
@@ -18,6 +18,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,14 +30,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class CheckpointService {
 
+    private static final Logger log = Logger.getLogger(CheckpointService.class.getName());
+
     private final SessionStore sessionStore;
-    private final AgentProperties agentProperties;
+    private final WorkspaceService workspaceService;
     private final ObjectMapper objectMapper;
 
     public CheckpointService(
-            SessionStore sessionStore, AgentProperties agentProperties, ObjectMapper objectMapper) {
+            SessionStore sessionStore, WorkspaceService workspaceService, ObjectMapper objectMapper) {
         this.sessionStore = sessionStore;
-        this.agentProperties = agentProperties;
+        this.workspaceService = workspaceService;
         this.objectMapper = objectMapper;
     }
 
@@ -42,15 +47,18 @@ public class CheckpointService {
         return sessionStore.sessionsDir().resolve(sessionId + ".ckpt");
     }
 
-    public void recordMutate(Path absoluteFile, byte[] before, byte[] after) {
+    /**
+     * @return true if the mutate was recorded; false if checkpointing failed (tool should warn)
+     */
+    public boolean recordMutate(Path absoluteFile, byte[] before, byte[] after) {
         String sessionId = TraceContextHolder.sessionId();
         String turnId = TraceContextHolder.turnId();
         if (sessionId == null || sessionId.isBlank()) {
-            return;
+            return false;
         }
         try {
             if (!sessionStore.isEventLog(sessionId)) {
-                return;
+                return false;
             }
             Path workspace = workspace();
             String rel = relativize(workspace, absoluteFile);
@@ -66,46 +74,46 @@ public class CheckpointService {
                 payload.put("after", afterHash);
             }
             sessionStore.appendEvent(SessionEvent.of(sessionId, turnId, SessionEvent.FILE_MUTATE, payload));
-        } catch (Exception ignored) {
-            // checkpoint must never break the agent
+            return true;
+        } catch (Exception e) {
+            log.log(
+                    Level.WARNING,
+                    "checkpoint recordMutate failed for " + absoluteFile + ": " + e.getMessage(),
+                    e);
+            return false;
         }
     }
 
-    public record RestoreResult(int filesRestored, boolean undoAvailable) {}
+    public record Conflict(String path, String reason) {}
 
-    public RestoreResult restoreTo(String sessionId, String eventId) throws IOException {
-        if (!sessionStore.isEventLog(sessionId)) {
-            throw new IllegalStateException("checkpoint restore requires an event-sourced session");
-        }
-        List<SessionEvent> events = sessionStore.loadEvents(sessionId);
-        int idx = indexOfUserEvent(events, eventId);
-        if (idx < 0) {
-            throw new IllegalArgumentException("unknown user checkpoint: " + eventId);
-        }
+    public record RestoreResult(
+            int filesRestored, boolean undoAvailable, List<Conflict> conflicts, boolean needsConfirm) {}
 
-        Map<String, String> targetBefore = new LinkedHashMap<>();
-        for (int i = idx + 1; i < events.size(); i++) {
-            SessionEvent e = events.get(i);
-            if (!SessionEvent.FILE_MUTATE.equals(e.type())) {
-                continue;
-            }
-            Map<String, Object> p = e.payload() == null ? Map.of() : e.payload();
-            String path = str(p.get("path"));
-            if (path == null || path.isBlank() || targetBefore.containsKey(path)) {
-                continue;
-            }
-            Object before = p.get("before");
-            targetBefore.put(path, before == null ? null : str(before));
+    /** Dry-run: list paths whose disk state is neither checkpoint-before nor last agent-after. */
+    public List<Conflict> findConflicts(String sessionId, String eventId) throws IOException {
+        MutatePlan plan = buildPlan(sessionId, eventId);
+        return detectConflicts(plan);
+    }
+
+    /**
+     * @param force when false and local conflicts exist, do not mutate; return {@code needsConfirm=true}
+     */
+    public RestoreResult restoreTo(String sessionId, String eventId, boolean force) throws IOException {
+        MutatePlan plan = buildPlan(sessionId, eventId);
+        List<Conflict> conflicts = detectConflicts(plan);
+        if (!force) {
+            // Dry-run only — never mutate until force=true.
+            return new RestoreResult(0, false, List.copyOf(conflicts), true);
         }
 
-        Path workspace = workspace();
+        Path workspace = plan.workspace();
         BlobStore blobs = new BlobStore(ckptDir(sessionId));
         Files.createDirectories(ckptDir(sessionId));
 
         ObjectNode undo = objectMapper.createObjectNode();
-        undo.put("checkpointEventId", events.get(idx).id());
+        undo.put("checkpointEventId", plan.checkpointEventId());
         ArrayNode files = undo.putArray("files");
-        for (String rel : targetBefore.keySet()) {
+        for (String rel : plan.targetBefore().keySet()) {
             Path abs = workspace.resolve(rel).normalize();
             ObjectNode row = files.addObject();
             row.put("path", rel);
@@ -119,14 +127,16 @@ public class CheckpointService {
         }
 
         ArrayNode tail = undo.putArray("tailEvents");
-        List<SessionEvent> discarded = events.subList(idx + 1, events.size());
-        for (SessionEvent e : discarded) {
+        for (SessionEvent e : plan.discarded()) {
             tail.add(objectMapper.valueToTree(e));
         }
-        Files.writeString(undoFile(sessionId), objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(undo), StandardCharsets.UTF_8);
+        Files.writeString(
+                undoFile(sessionId),
+                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(undo) + System.lineSeparator(),
+                StandardCharsets.UTF_8);
 
         int restored = 0;
-        for (Map.Entry<String, String> entry : targetBefore.entrySet()) {
+        for (Map.Entry<String, String> entry : plan.targetBefore().entrySet()) {
             Path abs = workspace.resolve(entry.getKey()).normalize();
             if (!abs.startsWith(workspace)) {
                 continue;
@@ -145,8 +155,13 @@ public class CheckpointService {
             restored++;
         }
 
-        sessionStore.truncateAfter(sessionId, events.get(idx).id());
-        return new RestoreResult(restored, true);
+        sessionStore.truncateAfter(sessionId, plan.checkpointEventId());
+        return new RestoreResult(restored, true, List.copyOf(conflicts), false);
+    }
+
+    /** Backward-compatible force restore. */
+    public RestoreResult restoreTo(String sessionId, String eventId) throws IOException {
+        return restoreTo(sessionId, eventId, true);
     }
 
     public void undoRestore(String sessionId) throws IOException {
@@ -230,15 +245,91 @@ public class CheckpointService {
         }
     }
 
+    private record MutatePlan(
+            Path workspace,
+            String checkpointEventId,
+            Map<String, String> targetBefore,
+            Map<String, String> lastAfter,
+            List<SessionEvent> discarded) {}
+
+    private MutatePlan buildPlan(String sessionId, String eventId) throws IOException {
+        if (!sessionStore.isEventLog(sessionId)) {
+            throw new IllegalStateException("checkpoint restore requires an event-sourced session");
+        }
+        List<SessionEvent> events = sessionStore.loadEvents(sessionId);
+        int idx = indexOfUserEvent(events, eventId);
+        if (idx < 0) {
+            throw new IllegalArgumentException("unknown user checkpoint: " + eventId);
+        }
+
+        Map<String, String> targetBefore = new LinkedHashMap<>();
+        Map<String, String> lastAfter = new LinkedHashMap<>();
+        for (int i = idx + 1; i < events.size(); i++) {
+            SessionEvent e = events.get(i);
+            if (!SessionEvent.FILE_MUTATE.equals(e.type())) {
+                continue;
+            }
+            Map<String, Object> p = e.payload() == null ? Map.of() : e.payload();
+            String path = str(p.get("path"));
+            if (path == null || path.isBlank()) {
+                continue;
+            }
+            Object before = p.get("before");
+            Object after = p.get("after");
+            if (!targetBefore.containsKey(path)) {
+                targetBefore.put(path, before == null ? null : str(before));
+            }
+            lastAfter.put(path, after == null ? null : str(after));
+        }
+
+        List<SessionEvent> discarded = List.copyOf(events.subList(idx + 1, events.size()));
+        return new MutatePlan(workspace(), events.get(idx).id(), targetBefore, lastAfter, discarded);
+    }
+
+    private List<Conflict> detectConflicts(MutatePlan plan) throws IOException {
+        List<Conflict> conflicts = new ArrayList<>();
+        Path workspace = plan.workspace();
+        for (String rel : plan.targetBefore().keySet()) {
+            Path abs = workspace.resolve(rel).normalize();
+            if (!abs.startsWith(workspace)) {
+                continue;
+            }
+            String before = blankToNull(plan.targetBefore().get(rel));
+            String after = blankToNull(plan.lastAfter().get(rel));
+            boolean exists = Files.isRegularFile(abs);
+            String current = exists ? BlobStore.sha256(Files.readAllBytes(abs)) : null;
+
+            boolean matchesBefore = Objects.equals(current, before);
+            boolean matchesAfter = Objects.equals(current, after);
+            if (matchesBefore || matchesAfter) {
+                continue;
+            }
+
+            String reason;
+            if (!exists && after != null) {
+                reason = "本地已删除（回滚将写回检查点内容）";
+            } else if (exists && after == null && before == null) {
+                reason = "本地存在该文件（回滚将删除）";
+            } else if (exists) {
+                reason = "本地内容与 AI 改动不一致（可能被手改过）";
+            } else {
+                reason = "本地状态与检查点不一致";
+            }
+            conflicts.add(new Conflict(rel, reason));
+        }
+        return conflicts;
+    }
+
     private Path undoFile(String sessionId) {
         return ckptDir(sessionId).resolve("undo.json");
     }
 
     private Path workspace() {
-        if (agentProperties.workspace() != null && !agentProperties.workspace().isBlank()) {
-            return Path.of(agentProperties.workspace()).toAbsolutePath().normalize();
+        String sid = TraceContextHolder.sessionId();
+        if (sid != null && !sid.isBlank()) {
+            return workspaceService.forSession(sid);
         }
-        return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        return workspaceService.current();
     }
 
     private static String relativize(Path workspace, Path absoluteFile) {
@@ -272,5 +363,9 @@ public class CheckpointService {
 
     private static String str(Object o) {
         return o == null ? null : String.valueOf(o);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 }

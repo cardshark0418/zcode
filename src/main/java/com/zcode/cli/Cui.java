@@ -236,11 +236,10 @@ public final class Cui {
         println(CuiStyle.MUTED + "  webfetch · websearch · todowrite · ask_user · skill" + CuiStyle.RESET);
         println();
         println(CuiStyle.ACCENT_BOLD + "  instructions" + CuiStyle.RESET);
-        println(CuiStyle.MUTED + "  ZCODE.md / CLAUDE.md / AGENTS.md (project) · ~/.zcode/ZCODE.md (user)" + CuiStyle.RESET);
+        println(CuiStyle.MUTED + "  ZCODE.md / CLAUDE.md / AGENTS.md (project)" + CuiStyle.RESET);
         println(CuiStyle.MUTED + "  skills: .zcode/skills/<name>/SKILL.md" + CuiStyle.RESET);
-        println();
         println(CuiStyle.ACCENT_BOLD + "  trace" + CuiStyle.RESET);
-        println(CuiStyle.MUTED + "  ~/.zcode/sessions/<id>.events.jsonl" + CuiStyle.RESET);
+        println(CuiStyle.MUTED + "  .zcode/sessions/<id>.events.jsonl" + CuiStyle.RESET);
         println();
     }
 

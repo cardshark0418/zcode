@@ -53,7 +53,6 @@ public class WriteTool implements Tool {
         byte[] afterBytes = content.getBytes(StandardCharsets.UTF_8);
         WorkspacePaths.ensureParent(path);
         Files.writeString(path, content, StandardCharsets.UTF_8);
-        checkpointService.recordMutate(path, beforeBytes, afterBytes);
         StringBuilder out = new StringBuilder();
         out.append("wrote ").append(path).append(" (").append(content.length()).append(" chars)\n\n");
         out.append("```diff\n");
@@ -63,6 +62,9 @@ public class WriteTool implements Tool {
             out.append('+').append(line).append('\n');
         }
         out.append("```");
+        if (!checkpointService.recordMutate(path, beforeBytes, afterBytes)) {
+            out.append("\n\n[warn] 检查点未记录，回滚可能无法还原此文件");
+        }
         return ToolResult.ok(out.toString());
     }
 

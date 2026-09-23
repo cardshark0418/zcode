@@ -1,6 +1,7 @@
 package com.zcode.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.zcode.chat.AnthropicMessageCodec;
 import com.zcode.chat.ChatService;
 import com.zcode.config.AgentProperties;
@@ -14,7 +15,9 @@ import com.zcode.tool.ToolRegistry;
 import com.zcode.tool.ToolResult;
 import com.zcode.trace.EventStore;
 import com.zcode.trace.TraceContext;
+import com.zcode.trace.TraceContextHolder;
 import com.zcode.permission.PermissionService;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -97,13 +100,22 @@ public class AgentService {
             BiConsumer<String, Map<String, Object>> onStructured) {
 
         TraceContext trace = TraceContext.of(sessionId, turnId);
+        if (TraceContextHolder.get() == null) {
+            TraceContextHolder.set(trace);
+        }
         List<ChatMessage> working = new ArrayList<>(prior);
         working.add(userMsg);
         List<ChatMessage> persisted = new ArrayList<>();
         persisted.add(userMsg);
 
-        String system = buildSystem(systemSummary);
-        boolean toolsOn = toolRegistry.enabled() && llmProperties.anthropic();
+        String system = buildSystem(systemSummary, sessionId);
+        boolean toolsOn = toolRegistry.enabled();
+        ArrayNode tools = null;
+        if (toolsOn) {
+            tools = llmProperties.anthropic()
+                    ? toolRegistry.anthropicToolsArray()
+                    : toolRegistry.openaiToolsArray();
+        }
         int maxIter = agentProperties.safeMaxIterations();
         ToolContext toolCtx = toolRegistry.context(sessionId, askUser, approver);
 
@@ -112,9 +124,17 @@ public class AgentService {
             AnthropicMessageCodec.ModelTurn turn = chatService.completeAgentTurn(
                     system,
                     working,
-                    toolsOn ? toolRegistry.anthropicToolsArray() : null,
+                    tools,
                     trace,
-                    onPartialText);
+                    onPartialText,
+                    retryMsg -> {
+                        if (onEvent != null) {
+                            onEvent.accept(retryMsg);
+                        }
+                        if (onStructured != null) {
+                            onStructured.accept("status", Map.of("message", retryMsg));
+                        }
+                    });
 
             if (turn.wantsTools()) {
                 ChatMessage assistantToolMsg = ChatMessage.assistantWithTools(turn.text(), turn.toolCalls());
@@ -174,11 +194,14 @@ public class AgentService {
 
     /** Public for request.header logging / trajectory projection. */
     public String buildSystemPrompt(String summary) {
-        return buildSystem(summary);
+        return buildSystem(summary, TraceContextHolder.sessionId());
     }
 
-    private String buildSystem(String summary) {
-        Path workspace = toolRegistry.workspace();
+    private String buildSystem(String summary, String sessionId) {
+        Path workspace =
+                StringUtils.hasText(sessionId)
+                        ? toolRegistry.workspaceForSession(sessionId)
+                        : toolRegistry.workspace();
         var mode = permissionService.mode();
         String model = StringUtils.hasText(llmProperties.model()) ? llmProperties.model() : "unknown";
 
@@ -191,7 +214,14 @@ public class AgentService {
         sb.append("- 权限模式：").append(mode.id()).append(" — ").append(mode.description()).append('\n');
         sb.append("- 若用户说「网页」「这个页面」且未另指目标，默认指 zcode Web UI：http://localhost:8080\n");
         sb.append("- 不要臆造工作区以外的路径；相对路径一律相对工作区解析。\n");
-        sb.append("- 不要假设进程当前目录等于工作区；工具路径以工作区为准。\n\n");
+        sb.append("- 不要假设进程当前目录等于工作区；工具路径以工作区为准。\n");
+        sb.append("- 允许并鼓励直接改当前工作区内的源码（含 zcode 自己）；像 Cursor 一样就地改文件。\n");
+        if (isZcodeRepo(workspace)) {
+            sb.append("- 当前工作区就是 zcode 仓库：改 `src/main/resources/static/**` 后刷新浏览器即可（serve 热读磁盘）；")
+                    .append("改 Java 后执行 `powershell -File bin/install.ps1`，再让用户重启 `zcode serve`。\n");
+            sb.append("- 改 zcode 自身时优先 `skill` 加载 `zcode-dev`。\n");
+        }
+        sb.append('\n');
 
         sb.append("## 工具\n");
         sb.append(mode.systemHint()).append('\n');
@@ -202,6 +232,11 @@ public class AgentService {
             sb.append("- delete：删除工作区内的文件（不要用 bash rm，以便检查点可回滚）。\n");
             sb.append("- 改写已有文件前先 read（除非本回合刚用 write 创建）。\n");
             sb.append("- bash：用于构建、测试、git 等；路径加引号；Windows 上优先用 PowerShell 友好命令。\n");
+            sb.append("- 核对中文文案时优先用 grep/read 查文件，不要用 PowerShell -match 直接比对中文（易乱码误判）。\n");
+            if (!isZcodeRepo(workspace)) {
+                sb.append("- 若工作区不是本仓库：改完对方项目的 Web 静态资源按其项目方式构建/刷新；")
+                        .append("不要假设需要 zcode 的 install。\n");
+            }
             sb.append("- websearch / webfetch：查实时信息（文档、版本、天气、新闻等）。")
                     .append("禁止声称自己没有网络或查不了。\n");
             sb.append("- todowrite：多步骤任务。ask_user：仅用于需要用户拍板的选择。")
@@ -313,5 +348,15 @@ public class AgentService {
         }
         String s = inputJson.replace('\n', ' ').trim();
         return s.length() > 120 ? s.substring(0, 117) + "..." : s;
+    }
+
+    /** True when the session workspace looks like this zcode repository. */
+    private static boolean isZcodeRepo(Path workspace) {
+        if (workspace == null) {
+            return false;
+        }
+        Path root = workspace.toAbsolutePath().normalize();
+        return Files.isRegularFile(root.resolve("pom.xml"))
+                && Files.isDirectory(root.resolve("src").resolve("main").resolve("java").resolve("com").resolve("zcode"));
     }
 }

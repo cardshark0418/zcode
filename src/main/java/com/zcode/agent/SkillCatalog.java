@@ -18,11 +18,10 @@ import org.springframework.util.StringUtils;
 /**
  * Discovers Agent Skills ({@code SKILL.md} under skill folders).
  *
- * Search roots (later overrides earlier on same name):
+ * <p>Search roots (later overrides earlier on same name) — project-local only:
  * <ul>
- *   <li>{@code ~/.zcode/skills/&lt;name&gt;/SKILL.md}</li>
- *   <li>{@code &lt;workspace&gt;/.agents/skills/&lt;name&gt;/SKILL.md}</li>
- *   <li>{@code &lt;workspace&gt;/.zcode/skills/&lt;name&gt;/SKILL.md}</li>
+ *   <li>{@code <workspace>/.agents/skills/&lt;name&gt;/SKILL.md}</li>
+ *   <li>{@code <workspace>/.zcode/skills/&lt;name&gt;/SKILL.md}</li>
  * </ul>
  */
 @Component
@@ -36,7 +35,6 @@ public class SkillCatalog {
 
     public Map<String, SkillInfo> discover(Path workspace) {
         Map<String, SkillInfo> map = new LinkedHashMap<>();
-        scanRoot(Path.of(System.getProperty("user.home"), ".zcode", "skills"), map);
         if (workspace != null) {
             scanRoot(workspace.resolve(".agents").resolve("skills"), map);
             scanRoot(workspace.resolve(".zcode").resolve("skills"), map);
@@ -53,7 +51,7 @@ public class SkillCatalog {
     public String catalogText(Path workspace) {
         List<SkillInfo> skills = list(workspace);
         if (skills.isEmpty()) {
-            return "(no skills found — put SKILL.md under .zcode/skills/<name>/ or ~/.zcode/skills/<name>/)";
+            return "(no skills found — put SKILL.md under .zcode/skills/<name>/)";
         }
         StringBuilder sb = new StringBuilder();
         for (SkillInfo s : skills) {
@@ -72,7 +70,6 @@ public class SkillCatalog {
         }
         SkillInfo info = discover(workspace).get(name.trim());
         if (info == null) {
-            // case-insensitive fallback
             for (var e : discover(workspace).entrySet()) {
                 if (e.getKey().equalsIgnoreCase(name.trim())) {
                     info = e.getValue();
@@ -120,12 +117,12 @@ public class SkillCatalog {
                             }
                         }
                     }
-                    if (!StringUtils.hasText(desc)) {
-                        desc = firstMeaningfulLine(stripFrontmatter(raw));
+                    if (!StringUtils.hasText(name)) {
+                        name = folderName;
                     }
                     map.put(name, new SkillInfo(name, desc, skillFile));
                 } catch (IOException ignored) {
-                    // skip
+                    // skip unreadable
                 }
             });
         } catch (IOException ignored) {
@@ -134,31 +131,13 @@ public class SkillCatalog {
     }
 
     private static String stripFrontmatter(String raw) {
-        if (raw == null) {
-            return "";
+        if (raw == null || !raw.startsWith("---")) {
+            return raw == null ? "" : raw;
         }
-        String t = raw.trim();
-        if (!t.startsWith("---")) {
-            return raw;
-        }
-        int end = t.indexOf("---", 3);
+        int end = raw.indexOf("---", 3);
         if (end < 0) {
             return raw;
         }
-        return t.substring(end + 3).trim();
-    }
-
-    private static String firstMeaningfulLine(String body) {
-        if (body == null) {
-            return "";
-        }
-        for (String line : body.split("\n")) {
-            String t = line.trim();
-            if (t.isEmpty() || t.startsWith("#")) {
-                continue;
-            }
-            return t.length() > 120 ? t.substring(0, 117) + "…" : t;
-        }
-        return "";
+        return raw.substring(end + 3).trim();
     }
 }

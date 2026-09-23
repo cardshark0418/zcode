@@ -72,7 +72,6 @@ public class EditTool implements Tool {
         byte[] beforeBytes = original.getBytes(StandardCharsets.UTF_8);
         byte[] afterBytes = updated.getBytes(StandardCharsets.UTF_8);
         Files.writeString(path, updated, StandardCharsets.UTF_8);
-        checkpointService.recordMutate(path, beforeBytes, afterBytes);
         StringBuilder out = new StringBuilder();
         out.append("edited ").append(path).append(" (").append(replaceAll ? count : 1).append(" replacement(s))\n\n");
         out.append("```diff\n");
@@ -85,6 +84,9 @@ public class EditTool implements Tool {
             out.append('+').append(line).append('\n');
         }
         out.append("```");
+        if (!checkpointService.recordMutate(path, beforeBytes, afterBytes)) {
+            out.append("\n\n[warn] 检查点未记录，回滚可能无法还原此文件");
+        }
         return ToolResult.ok(out.toString());
     }
 

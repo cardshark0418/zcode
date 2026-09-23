@@ -25,7 +25,7 @@ public class SkillTool implements Tool {
     public String description() {
         return "Load a named Agent Skill (SKILL.md) into context, or list available skills when name is omitted. "
                 + "Use when a specialized workflow/skill matches the user task. "
-                + "Skills live under .zcode/skills/<name>/SKILL.md, .agents/skills/<name>/SKILL.md, or ~/.zcode/skills/<name>/SKILL.md.";
+                + "Skills live under .zcode/skills/<name>/SKILL.md (or .agents/skills/<name>/SKILL.md).";
     }
 
     @Override

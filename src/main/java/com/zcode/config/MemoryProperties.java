@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "zcode.memory")
 public record MemoryProperties(
-        /** Directory for session JSONL files. Empty = ~/.zcode/sessions */
+        /** Directory for session JSONL files. Empty = &lt;workspace&gt;/.zcode/sessions */
         String dir,
         /** Max user/assistant turns kept as raw dialogue (pairs). */
         int maxTurns,

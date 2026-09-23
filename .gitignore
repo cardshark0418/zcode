@@ -17,3 +17,14 @@ last-chat-request.json
 last-compact-request.json
 *.events.jsonl
 *.meta.json
+
+# project-local zcode runtime (keep skills)
+.zcode/sessions/
+.zcode/zcode.jar
+.zcode/zcode.cmd
+.zcode/llm.json
+.zcode/last-chat-request.json
+.zcode/last-compact-request.json
+.zcode/**/*.ckpt/
+!.zcode/skills/
+!.zcode/skills/**/

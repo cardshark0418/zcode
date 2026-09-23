@@ -20,6 +20,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -36,16 +38,19 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final AnthropicMessageCodec anthropicMessageCodec;
+    private final OpenAiMessageCodec openAiMessageCodec;
     private final EventStore eventStore;
 
     public ChatService(
             LlmRuntime llmProperties,
             ObjectMapper objectMapper,
             AnthropicMessageCodec anthropicMessageCodec,
+            OpenAiMessageCodec openAiMessageCodec,
             EventStore eventStore) {
         this.llmProperties = llmProperties;
         this.objectMapper = objectMapper;
         this.anthropicMessageCodec = anthropicMessageCodec;
+        this.openAiMessageCodec = openAiMessageCodec;
         this.eventStore = eventStore;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -80,12 +85,19 @@ public class ChatService {
             throw new IllegalArgumentException("messages must not be empty");
         }
         requireApiKey();
-
-        if (llmProperties.anthropic()) {
-            streamAnthropic(systemSummary, messages, onPartial);
-        } else {
-            streamOpenAi(systemSummary, messages, onPartial);
-        }
+        withModelRetries(
+                "stream",
+                null,
+                onPartial,
+                null,
+                tracked -> {
+                    if (llmProperties.anthropic()) {
+                        streamAnthropic(systemSummary, messages, tracked);
+                    } else {
+                        streamOpenAi(systemSummary, messages, tracked);
+                    }
+                    return Boolean.TRUE;
+                });
     }
 
     /**
@@ -97,16 +109,17 @@ public class ChatService {
         }
         requireApiKey();
         int tokens = Math.max(256, maxTokens);
-        try {
-            if (llmProperties.anthropic()) {
-                return completeAnthropic(system, userMessage.trim(), tokens);
-            }
-            return completeOpenAi(system, userMessage.trim(), tokens);
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("complete failed: " + e.getMessage(), e);
-        }
+        return withModelRetries(
+                "complete",
+                null,
+                null,
+                null,
+                ignored -> {
+                    if (llmProperties.anthropic()) {
+                        return completeAnthropic(system, userMessage.trim(), tokens);
+                    }
+                    return completeOpenAi(system, userMessage.trim(), tokens);
+                });
     }
 
     /**
@@ -134,10 +147,39 @@ public class ChatService {
             ArrayNode tools,
             TraceContext trace,
             Consumer<String> onPartialText) {
+        return completeAgentTurn(systemSummary, history, tools, trace, onPartialText, null);
+    }
+
+    /**
+     * @param onRetry optional status sink when a failed attempt will be retried (e.g. UI toast)
+     */
+    public AnthropicMessageCodec.ModelTurn completeAgentTurn(
+            String systemSummary,
+            List<ChatMessage> history,
+            ArrayNode tools,
+            TraceContext trace,
+            Consumer<String> onPartialText,
+            Consumer<String> onRetry) {
         requireApiKey();
-        if (!llmProperties.anthropic()) {
-            throw new IllegalStateException("agent tools currently require zcode.llm.api=anthropic");
-        }
+        return withModelRetries(
+                "completeAgentTurn",
+                trace,
+                onPartialText,
+                onRetry,
+                tracked -> {
+                    if (!llmProperties.anthropic()) {
+                        return completeAgentTurnOpenAi(systemSummary, history, tools, trace, tracked);
+                    }
+                    return completeAgentTurnAnthropic(systemSummary, history, tools, trace, tracked);
+                });
+    }
+
+    private AnthropicMessageCodec.ModelTurn completeAgentTurnAnthropic(
+            String systemSummary,
+            List<ChatMessage> history,
+            ArrayNode tools,
+            TraceContext trace,
+            Consumer<String> onPartialText) throws Exception {
         List<String> toolNames = new ArrayList<>();
         if (tools != null) {
             for (JsonNode t : tools) {
@@ -156,94 +198,272 @@ public class ChatService {
                         "hasSystem", StringUtils.hasText(systemSummary),
                         "stream", true));
         long started = System.currentTimeMillis();
-        try {
-            ObjectNode root = objectMapper.createObjectNode();
-            root.put("model", llmProperties.model());
-            root.put("max_tokens", Math.max(256, llmProperties.maxTokens()));
-            root.put("stream", true);
-            if (StringUtils.hasText(systemSummary)) {
-                root.put("system", systemSummary.trim());
-            }
-            root.set("messages", anthropicMessageCodec.toMessagesArray(history));
-            if (tools != null && !tools.isEmpty()) {
-                root.set("tools", tools);
-            }
-            String body = objectMapper.writeValueAsString(root);
-            RequestDump.write(objectMapper, "last-chat-request.json", body);
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", llmProperties.model());
+        root.put("max_tokens", Math.max(256, llmProperties.maxTokens()));
+        root.put("stream", true);
+        if (StringUtils.hasText(systemSummary)) {
+            root.put("system", systemSummary.trim());
+        }
+        root.set("messages", anthropicMessageCodec.toMessagesArray(history));
+        if (tools != null && !tools.isEmpty()) {
+            root.set("tools", tools);
+        }
+        String body = objectMapper.writeValueAsString(root);
+        RequestDump.write(objectMapper, "last-chat-request.json", body);
 
-            String url = joinUrl(llmProperties.baseUrl(), "/v1/messages");
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(Math.max(30, llmProperties.timeoutSeconds())))
-                    .header("x-api-key", llmProperties.apiKey())
-                    .header("Authorization", "Bearer " + llmProperties.apiKey())
-                    .header("anthropic-version", "2023-06-01")
-                    .header("Content-Type", "application/json; charset=utf-8")
-                    .header("Accept", "text/event-stream")
-                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                    .build();
+        String url = joinUrl(llmProperties.baseUrl(), "/v1/messages");
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(Math.max(30, llmProperties.timeoutSeconds())))
+                .header("x-api-key", llmProperties.apiKey())
+                .header("Authorization", "Bearer " + llmProperties.apiKey())
+                .header("anthropic-version", "2023-06-01")
+                .header("Content-Type", "application/json; charset=utf-8")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
 
-            HttpResponse<InputStream> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException(
-                        "HTTP " + response.statusCode() + ": " + readQuietly(response.body()));
+        HttpResponse<InputStream> response =
+                httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException(
+                    "HTTP " + response.statusCode() + ": " + readQuietly(response.body()));
+        }
+
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
+        AnthropicMessageCodec.ModelTurn turn;
+        if (contentType.contains("text/event-stream")
+                || contentType.contains("stream")
+                || contentType.isBlank()) {
+            turn = readAnthropicAgentSse(response.body(), onPartialText);
+        } else {
+            String json = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
+            turn = anthropicMessageCodec.parseResponse(json);
+            if (onPartialText != null && StringUtils.hasText(turn.text())) {
+                onPartialText.accept(turn.text());
             }
+        }
 
-            String contentType = response.headers().firstValue("Content-Type").orElse("");
-            AnthropicMessageCodec.ModelTurn turn;
-            if (contentType.contains("text/event-stream")
-                    || contentType.contains("stream")
-                    || contentType.isBlank()) {
-                turn = readAnthropicAgentSse(response.body(), onPartialText);
-            } else {
-                String json = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
-                turn = anthropicMessageCodec.parseResponse(json);
-                if (onPartialText != null && StringUtils.hasText(turn.text())) {
-                    onPartialText.accept(turn.text());
+        List<String> callNames = new ArrayList<>();
+        if (turn.toolCalls() != null) {
+            turn.toolCalls().forEach(c -> callNames.add(c.name()));
+        }
+        eventStore.emit(
+                "model.response",
+                trace,
+                eventStore.mapOf(
+                        "stopReason", turn.stopReason(),
+                        "latencyMs", System.currentTimeMillis() - started,
+                        "textPreview", eventStore.preview(turn.text()),
+                        "toolCallNames", callNames,
+                        "stream", true));
+        return turn;
+    }
+
+    private AnthropicMessageCodec.ModelTurn completeAgentTurnOpenAi(
+            String systemSummary,
+            List<ChatMessage> history,
+            ArrayNode tools,
+            TraceContext trace,
+            Consumer<String> onPartialText) throws Exception {
+        List<String> toolNames = new ArrayList<>();
+        if (tools != null) {
+            for (JsonNode t : tools) {
+                JsonNode fn = t == null ? null : t.get("function");
+                if (fn != null && fn.hasNonNull("name")) {
+                    toolNames.add(fn.get("name").asText());
+                } else if (t != null && t.hasNonNull("name")) {
+                    toolNames.add(t.get("name").asText());
                 }
             }
-
-            List<String> callNames = new ArrayList<>();
-            if (turn.toolCalls() != null) {
-                turn.toolCalls().forEach(c -> callNames.add(c.name()));
-            }
-            eventStore.emit(
-                    "model.response",
-                    trace,
-                    eventStore.mapOf(
-                            "stopReason", turn.stopReason(),
-                            "latencyMs", System.currentTimeMillis() - started,
-                            "textPreview", eventStore.preview(turn.text()),
-                            "toolCallNames", callNames,
-                            "stream", true));
-            return turn;
-        } catch (IllegalStateException e) {
-            eventStore.emit(
-                    "error",
-                    trace,
-                    eventStore.mapOf(
-                            "where", "ChatService.completeAgentTurn",
-                            "message", e.getMessage(),
-                            "latencyMs", System.currentTimeMillis() - started));
-            throw e;
-        } catch (Exception e) {
-            eventStore.emit(
-                    "error",
-                    trace,
-                    eventStore.mapOf(
-                            "where", "ChatService.completeAgentTurn",
-                            "message", e.getMessage(),
-                            "latencyMs", System.currentTimeMillis() - started));
-            throw new IllegalStateException("agent turn failed: " + e.getMessage(), e);
         }
+        eventStore.emit(
+                "model.request",
+                trace,
+                eventStore.mapOf(
+                        "model", llmProperties.model(),
+                        "toolNames", toolNames,
+                        "messageCount", history == null ? 0 : history.size(),
+                        "hasSystem", StringUtils.hasText(systemSummary),
+                        "stream", true,
+                        "api", "openai"));
+        long started = System.currentTimeMillis();
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", llmProperties.model());
+        root.put("stream", true);
+        root.put("max_tokens", Math.max(256, llmProperties.maxTokens()));
+        root.set("messages", openAiMessageCodec.toMessagesArray(systemSummary, history));
+        if (tools != null && !tools.isEmpty()) {
+            root.set("tools", tools);
+            root.put("tool_choice", "auto");
+        }
+        String body = objectMapper.writeValueAsString(root);
+        RequestDump.write(objectMapper, "last-chat-request.json", body);
+
+        String url = joinUrl(llmProperties.baseUrl(), "/chat/completions");
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(Math.max(30, llmProperties.timeoutSeconds())))
+                .header("Authorization", "Bearer " + llmProperties.apiKey())
+                .header("Content-Type", "application/json; charset=utf-8")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<InputStream> response =
+                httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException(
+                    "HTTP " + response.statusCode() + ": " + readQuietly(response.body()));
+        }
+
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
+        AnthropicMessageCodec.ModelTurn turn;
+        if (contentType.contains("text/event-stream")
+                || contentType.contains("stream")
+                || contentType.isBlank()) {
+            turn = readOpenAiAgentSse(response.body(), onPartialText);
+        } else {
+            String json = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
+            turn = openAiMessageCodec.parseResponse(json);
+            if (onPartialText != null && StringUtils.hasText(turn.text())) {
+                onPartialText.accept(turn.text());
+            }
+        }
+
+        List<String> callNames = new ArrayList<>();
+        if (turn.toolCalls() != null) {
+            turn.toolCalls().forEach(c -> callNames.add(c.name()));
+        }
+        eventStore.emit(
+                "model.response",
+                trace,
+                eventStore.mapOf(
+                        "stopReason", turn.stopReason(),
+                        "latencyMs", System.currentTimeMillis() - started,
+                        "textPreview", eventStore.preview(turn.text()),
+                        "toolCallNames", callNames,
+                        "stream", true,
+                        "api", "openai"));
+        return turn;
+    }
+
+    /** 1 initial try + 2 retries. */
+    private static final int MODEL_MAX_ATTEMPTS = 3;
+
+    @FunctionalInterface
+    private interface ModelAttempt<T> {
+        T run(Consumer<String> onPartialText) throws Exception;
+    }
+
+    private <T> T withModelRetries(
+            String where,
+            TraceContext trace,
+            Consumer<String> onPartialText,
+            Consumer<String> onRetry,
+            ModelAttempt<T> attempt) {
+        RuntimeException last = null;
+        for (int attemptNo = 1; attemptNo <= MODEL_MAX_ATTEMPTS; attemptNo++) {
+            java.util.concurrent.atomic.AtomicBoolean streamed =
+                    new java.util.concurrent.atomic.AtomicBoolean(false);
+            Consumer<String> tracked =
+                    t -> {
+                        if (StringUtils.hasText(t)) {
+                            streamed.set(true);
+                        }
+                        if (onPartialText != null) {
+                            onPartialText.accept(t);
+                        }
+                    };
+            try {
+                return attempt.run(tracked);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("chat interrupted", e);
+            } catch (Exception e) {
+                RuntimeException wrapped =
+                        e instanceof RuntimeException re
+                                ? re
+                                : new IllegalStateException("agent turn failed: " + e.getMessage(), e);
+                last = wrapped;
+                boolean canRetry =
+                        attemptNo < MODEL_MAX_ATTEMPTS
+                                && !streamed.get()
+                                && isRetryableModelFailure(wrapped);
+                if (!canRetry) {
+                    eventStore.emit(
+                            "error",
+                            trace,
+                            eventStore.mapOf(
+                                    "where", "ChatService." + where,
+                                    "message", wrapped.getMessage(),
+                                    "attempt", attemptNo));
+                    throw wrapped;
+                }
+                int retryIndex = attemptNo; // 1st retry after attempt 1 fails
+                String msg =
+                        "模型请求失败，正在重试 ("
+                                + retryIndex
+                                + "/"
+                                + (MODEL_MAX_ATTEMPTS - 1)
+                                + ") · "
+                                + shortErr(wrapped.getMessage());
+                eventStore.emit(
+                        "model.retry",
+                        trace,
+                        eventStore.mapOf(
+                                "attempt", attemptNo,
+                                "maxAttempts", MODEL_MAX_ATTEMPTS,
+                                "message", wrapped.getMessage()));
+                if (onRetry != null) {
+                    onRetry.accept(msg);
+                }
+                try {
+                    Thread.sleep(400L * attemptNo);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw wrapped;
+                }
+            }
+        }
+        throw last != null ? last : new IllegalStateException("agent turn failed");
+    }
+
+    /** Auth / bad-request / interrupt: do not retry. Network / 429 / 5xx / empty stream: retry. */
+    static boolean isRetryableModelFailure(Throwable e) {
+        if (e instanceof IllegalArgumentException) {
+            return false;
+        }
+        String msg = e.getMessage() == null ? "" : e.getMessage();
+        String lower = msg.toLowerCase();
+        if (lower.contains("interrupted")) {
+            return false;
+        }
+        if (msg.contains("HTTP 400")
+                || msg.contains("HTTP 401")
+                || msg.contains("HTTP 403")
+                || msg.contains("HTTP 404")) {
+            return false;
+        }
+        if (msg.contains("未配置 API Key") || msg.contains("未配置 api key")) {
+            return false;
+        }
+        return true;
+    }
+
+    private static String shortErr(String msg) {
+        if (msg == null || msg.isBlank()) {
+            return "error";
+        }
+        String one = msg.replace('\n', ' ').trim();
+        return one.length() <= 120 ? one : one.substring(0, 117) + "...";
     }
 
     private void requireApiKey() {
         if (!StringUtils.hasText(llmProperties.apiKey())) {
             throw new IllegalStateException(
-                    "Missing LLM api key. Set env ZCODE_LLM_API_KEY (and optionally ZCODE_LLM_BASE_URL / ZCODE_LLM_MODEL)."
-            );
+                    "当前提供方未配置 API Key。请在设置 → 模型 中填写，或切换到已配置的提供方。");
         }
     }
 
@@ -612,6 +832,99 @@ public class ChatService {
         if (collected.toString().isBlank()) {
             throw new IllegalStateException("empty stream response (no content deltas)");
         }
+    }
+
+    /**
+     * OpenAI Chat Completions SSE with text + incremental {@code tool_calls}.
+     * Empty text is allowed when the model only emits tool calls.
+     */
+    private AnthropicMessageCodec.ModelTurn readOpenAiAgentSse(
+            InputStream body, Consumer<String> onPartialText) throws Exception {
+        StringBuilder text = new StringBuilder();
+        Map<Integer, OpenAiToolDraft> drafts = new TreeMap<>();
+        String stopReason = null;
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty() || line.startsWith(":") || line.startsWith("event:")) {
+                    continue;
+                }
+                if (!line.startsWith("data:")) {
+                    continue;
+                }
+                String data = line.substring(5).trim();
+                if (data.isEmpty()) {
+                    continue;
+                }
+                if ("[DONE]".equals(data)) {
+                    break;
+                }
+
+                JsonNode root = objectMapper.readTree(data);
+                JsonNode choices = root.get("choices");
+                if (choices == null || !choices.isArray() || choices.isEmpty()) {
+                    continue;
+                }
+                JsonNode choice = choices.get(0);
+                JsonNode delta = choice.get("delta");
+                if (delta != null) {
+                    String token = textOrNull(delta.get("content"));
+                    if (token != null && !token.isEmpty()) {
+                        text.append(token);
+                        if (onPartialText != null) {
+                            onPartialText.accept(token);
+                        }
+                    }
+                    JsonNode toolCalls = delta.get("tool_calls");
+                    if (toolCalls != null && toolCalls.isArray()) {
+                        for (JsonNode tc : toolCalls) {
+                            int index = tc.has("index") ? tc.get("index").asInt(0) : 0;
+                            OpenAiToolDraft draft = drafts.computeIfAbsent(index, k -> new OpenAiToolDraft());
+                            if (tc.hasNonNull("id")) {
+                                draft.id = tc.get("id").asText();
+                            }
+                            JsonNode fn = tc.get("function");
+                            if (fn != null) {
+                                if (fn.hasNonNull("name")) {
+                                    draft.name = fn.get("name").asText();
+                                }
+                                if (fn.has("arguments") && !fn.get("arguments").isNull()) {
+                                    draft.arguments.append(fn.get("arguments").asText(""));
+                                }
+                            }
+                        }
+                    }
+                }
+                JsonNode finish = choice.get("finish_reason");
+                if (finish != null && !finish.isNull() && !finish.asText().isBlank()) {
+                    stopReason = finish.asText();
+                    // Keep reading until [DONE] in case late chunks arrive; most providers stop here.
+                    if ("stop".equals(stopReason) || "tool_calls".equals(stopReason) || "end_turn".equals(stopReason)) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        List<ToolCall> calls = new ArrayList<>();
+        for (OpenAiToolDraft draft : drafts.values()) {
+            if (!StringUtils.hasText(draft.name)) {
+                continue;
+            }
+            String args = draft.arguments.isEmpty() ? "{}" : draft.arguments.toString();
+            calls.add(new ToolCall(draft.id, draft.name, args));
+        }
+        if (text.isEmpty() && calls.isEmpty()) {
+            throw new IllegalStateException("empty stream response (no text or tool_calls)");
+        }
+        return new AnthropicMessageCodec.ModelTurn(stopReason, text.toString(), List.copyOf(calls));
+    }
+
+    private static final class OpenAiToolDraft {
+        String id;
+        String name;
+        final StringBuilder arguments = new StringBuilder();
     }
 
     private String extractAnthropicNonStream(String json) throws Exception {

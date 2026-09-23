@@ -1,5 +1,6 @@
 package com.zcode.tool;
 
+import com.zcode.config.ZcodeHome;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -15,10 +16,12 @@ import org.springframework.stereotype.Component;
 public class TodoStore {
 
     private final ObjectMapper objectMapper;
+    private final ZcodeHome zcodeHome;
     private final Map<String, List<TodoItem>> cache = new ConcurrentHashMap<>();
 
-    public TodoStore(ObjectMapper objectMapper) {
+    public TodoStore(ObjectMapper objectMapper, ZcodeHome zcodeHome) {
         this.objectMapper = objectMapper;
+        this.zcodeHome = zcodeHome;
     }
 
     public synchronized List<TodoItem> get(String sessionId) {
@@ -75,7 +78,7 @@ public class TodoStore {
     }
 
     private Path file(String sessionId) {
-        return Path.of(System.getProperty("user.home"), ".zcode", "sessions", sessionId + ".todos.json");
+        return zcodeHome.sessionsDir().resolve(sessionId + ".todos.json");
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

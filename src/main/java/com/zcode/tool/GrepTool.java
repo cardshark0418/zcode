@@ -79,7 +79,7 @@ public class GrepTool implements Tool {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                     String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                    if (name.equals(".git") || name.equals("node_modules") || name.equals("target") || name.equals(".zcode")) {
+                    if (WorkspacePaths.skipWalkDir(dir, name)) {
                         return FileVisitResult.SKIP_SUBTREE;
                     }
                     return FileVisitResult.CONTINUE;

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zcode.config.AgentProperties;
+import com.zcode.config.WorkspaceService;
 import com.zcode.permission.PermissionMode;
 import com.zcode.permission.PermissionService;
 import java.nio.file.Path;
@@ -22,17 +23,20 @@ public class ToolRegistry {
     private final ObjectMapper objectMapper;
     private final TodoStore todoStore;
     private final PermissionService permissionService;
+    private final WorkspaceService workspaceService;
 
     public ToolRegistry(
             List<Tool> toolList,
             AgentProperties agentProperties,
             ObjectMapper objectMapper,
             TodoStore todoStore,
-            PermissionService permissionService) {
+            PermissionService permissionService,
+            WorkspaceService workspaceService) {
         this.agentProperties = agentProperties;
         this.objectMapper = objectMapper;
         this.todoStore = todoStore;
         this.permissionService = permissionService;
+        this.workspaceService = workspaceService;
         for (Tool tool : toolList) {
             tools.put(tool.name(), tool);
         }
@@ -47,15 +51,16 @@ public class ToolRegistry {
     }
 
     public Path workspace() {
-        if (agentProperties.workspace() != null && !agentProperties.workspace().isBlank()) {
-            return Path.of(agentProperties.workspace()).toAbsolutePath().normalize();
-        }
-        return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        return workspaceService.current();
+    }
+
+    public Path workspaceForSession(String sessionId) {
+        return workspaceService.forSession(sessionId);
     }
 
     public ToolContext context(String sessionId, AskUserHandler askUser, ToolApprover approver) {
         return new ToolContext(
-                workspace(),
+                workspaceForSession(sessionId),
                 agentProperties.safeMaxToolOutputChars(),
                 sessionId,
                 askUser,
@@ -74,6 +79,24 @@ public class ToolRegistry {
             node.put("name", tool.name());
             node.put("description", tool.description());
             node.set("input_schema", tool.inputSchema(objectMapper));
+        }
+        return arr;
+    }
+
+    /** OpenAI Chat Completions {@code tools} array ({@code type=function}). */
+    public ArrayNode openaiToolsArray() {
+        PermissionMode mode = permissionService.mode();
+        ArrayNode arr = objectMapper.createArrayNode();
+        for (Tool tool : tools.values()) {
+            if (!mode.allows(tool.name())) {
+                continue;
+            }
+            ObjectNode node = arr.addObject();
+            node.put("type", "function");
+            ObjectNode fn = node.putObject("function");
+            fn.put("name", tool.name());
+            fn.put("description", tool.description());
+            fn.set("parameters", tool.inputSchema(objectMapper));
         }
         return arr;
     }

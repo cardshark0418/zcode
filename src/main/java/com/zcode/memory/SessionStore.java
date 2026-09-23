@@ -2,6 +2,7 @@ package com.zcode.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zcode.config.MemoryProperties;
+import com.zcode.config.ZcodeHome;
 import com.zcode.trace.TraceContextHolder;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,7 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Session history as JSONL under ~/.zcode/sessions (or configured dir).
+ * Session history as JSONL under {@code <workspace>/.zcode/sessions} (or configured dir).
  */
 @Component
 public class SessionStore {
@@ -28,14 +30,16 @@ public class SessionStore {
     private final ObjectMapper objectMapper;
     private final Path sessionsDir;
     private final int maxTurns;
+    private final ZcodeHome zcodeHome;
 
-    public SessionStore(ObjectMapper objectMapper, MemoryProperties memoryProperties) {
+    public SessionStore(ObjectMapper objectMapper, MemoryProperties memoryProperties, ZcodeHome zcodeHome) {
         this.objectMapper = objectMapper;
         this.maxTurns = memoryProperties.safeMaxTurns();
+        this.zcodeHome = zcodeHome;
         if (StringUtils.hasText(memoryProperties.dir())) {
             this.sessionsDir = Path.of(memoryProperties.dir());
         } else {
-            this.sessionsDir = Path.of(System.getProperty("user.home"), ".zcode", "sessions");
+            this.sessionsDir = zcodeHome.sessionsDir();
         }
     }
 
@@ -48,10 +52,19 @@ public class SessionStore {
     }
 
     public String createSession() throws IOException {
+        return createSession(null);
+    }
+
+    /** @param workspace absolute path; null/blank → project default workspace */
+    public String createSession(String workspace) throws IOException {
         ensureDir();
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Files.writeString(sessionFile(id), "", StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
-        writeMeta(id, DEFAULT_TITLE, false);
+        Path ws =
+                StringUtils.hasText(workspace)
+                        ? Path.of(workspace.trim()).toAbsolutePath().normalize()
+                        : zcodeHome.workspace();
+        writeMeta(id, DEFAULT_TITLE, false, ws.toString());
         setActive(id);
         return id;
     }
@@ -351,10 +364,155 @@ public class SessionStore {
 
     /**
      * Build model context: system summary + last {@code maxTurns} raw pairs.
+     * Trailing unanswered user lines are omitted so a new turn cannot re-execute a restored intent.
      */
     public ContextView buildContextView(String sessionId) throws IOException {
         SessionSnapshot snap = snapshot(sessionId);
-        return new ContextView(snap.summary(), truncateDialogue(snap.dialogue()));
+        return new ContextView(
+                snap.summary(), truncateDialogue(withoutTrailingUnansweredUsers(snap.dialogue())));
+    }
+
+    /**
+     * Drop trailing plain-user messages that have no assistant/tool reply after them.
+     * Typical after restore-to-user-checkpoint: the kept user line is an open order.
+     *
+     * @return ids of dropped user messages (empty if nothing changed)
+     */
+    public List<String> dropTrailingUnansweredUserMessages(String sessionId) throws IOException {
+        if (!exists(sessionId)) {
+            return List.of();
+        }
+        if (isEventLog(sessionId)) {
+            return dropTrailingUnansweredFromEventLog(sessionId);
+        }
+        return dropTrailingUnansweredFromLegacy(sessionId);
+    }
+
+    /** Strip trailing unanswered plain-user messages from an in-memory dialogue list. */
+    public static List<ChatMessage> withoutTrailingUnansweredUsers(List<ChatMessage> dialogue) {
+        if (dialogue == null || dialogue.isEmpty()) {
+            return dialogue == null ? List.of() : dialogue;
+        }
+        int keep = dialogue.size();
+        while (keep > 0 && dialogue.get(keep - 1).isPlainUser()) {
+            keep--;
+        }
+        if (keep == dialogue.size()) {
+            return dialogue;
+        }
+        return List.copyOf(dialogue.subList(0, keep));
+    }
+
+    private List<String> dropTrailingUnansweredFromEventLog(String sessionId) throws IOException {
+        List<SessionEvent> events = loadEvents(sessionId);
+        List<ChatMessage> dialogue = SessionProjection.toMessages(events, objectMapper);
+        int keepMsg = dialogue.size();
+        while (keepMsg > 0 && dialogue.get(keepMsg - 1).isPlainUser()) {
+            keepMsg--;
+        }
+        if (keepMsg == dialogue.size()) {
+            return List.of();
+        }
+        List<String> droppedIds = new ArrayList<>();
+        for (int i = keepMsg; i < dialogue.size(); i++) {
+            String id = dialogue.get(i).id();
+            if (id != null && !id.isBlank()) {
+                droppedIds.add(id);
+            }
+        }
+
+        int dropFrom;
+        if (keepMsg == 0) {
+            dropFrom = 0;
+            for (int i = 0; i < events.size(); i++) {
+                if (SessionEvent.USER_MESSAGE.equals(events.get(i).type())) {
+                    dropFrom = i;
+                    String turnId = events.get(i).turnId();
+                    while (dropFrom > 0) {
+                        SessionEvent prev = events.get(dropFrom - 1);
+                        if (turnId != null && turnId.equals(prev.turnId())) {
+                            dropFrom--;
+                        } else {
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        } else {
+            String lastKeepId = dialogue.get(keepMsg - 1).id();
+            int lastKeepIdx = indexOfEventOrPayloadId(events, lastKeepId);
+            if (lastKeepIdx < 0) {
+                return List.of();
+            }
+            dropFrom = events.size();
+            for (int i = lastKeepIdx + 1; i < events.size(); i++) {
+                if (SessionEvent.USER_MESSAGE.equals(events.get(i).type())) {
+                    dropFrom = i;
+                    String turnId = events.get(i).turnId();
+                    while (dropFrom > lastKeepIdx + 1) {
+                        SessionEvent prev = events.get(dropFrom - 1);
+                        if (turnId != null && turnId.equals(prev.turnId())) {
+                            dropFrom--;
+                        } else {
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (dropFrom >= events.size()) {
+            return List.of();
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < dropFrom; i++) {
+            sb.append(objectMapper.writeValueAsString(events.get(i))).append('\n');
+        }
+        Files.writeString(sessionFile(sessionId), sb.toString(), StandardCharsets.UTF_8);
+        return List.copyOf(droppedIds);
+    }
+
+    private List<String> dropTrailingUnansweredFromLegacy(String sessionId) throws IOException {
+        List<ChatMessage> all = loadLegacyMessages(sessionId);
+        int keep = all.size();
+        while (keep > 0 && all.get(keep - 1).isPlainUser()) {
+            keep--;
+        }
+        if (keep == all.size()) {
+            return List.of();
+        }
+        List<String> droppedIds = new ArrayList<>();
+        for (int i = keep; i < all.size(); i++) {
+            String id = all.get(i).id();
+            if (id != null && !id.isBlank()) {
+                droppedIds.add(id);
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < keep; i++) {
+            sb.append(objectMapper.writeValueAsString(all.get(i))).append('\n');
+        }
+        Files.writeString(sessionFile(sessionId), sb.toString(), StandardCharsets.UTF_8);
+        return List.copyOf(droppedIds);
+    }
+
+    private static int indexOfEventOrPayloadId(List<SessionEvent> events, String id) {
+        if (id == null || id.isBlank() || events == null) {
+            return -1;
+        }
+        for (int i = 0; i < events.size(); i++) {
+            SessionEvent e = events.get(i);
+            if (id.equals(e.id())) {
+                return i;
+            }
+            Map<?, ?> p = e.payload();
+            if (p != null && id.equals(String.valueOf(p.get("id")))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**
@@ -406,7 +564,7 @@ public class SessionStore {
                             String id = p.getFileName().toString().replace(".jsonl", "");
                             long mtime = Files.getLastModifiedTime(p).toMillis();
                             int count = countDialogue(id);
-                            out.add(new SessionInfo(id, readTitle(id), mtime, count));
+                            out.add(new SessionInfo(id, readTitle(id), readWorkspace(id), mtime, count));
                         } catch (IOException ignored) {
                             // skip unreadable
                         }
@@ -462,10 +620,50 @@ public class SessionStore {
         String cleaned = title == null ? "" : title.trim();
         if (cleaned.isEmpty()) {
             String auto = firstUserTitle(sessionId);
-            writeMeta(sessionId, auto != null ? auto : DEFAULT_TITLE, false);
+            writeMeta(sessionId, auto != null ? auto : DEFAULT_TITLE, false, readWorkspace(sessionId));
             return;
         }
-        writeMeta(sessionId, cleaned, true);
+        writeMeta(sessionId, cleaned, true, readWorkspace(sessionId));
+    }
+
+    public String readWorkspace(String sessionId) {
+        var meta = readMeta(sessionId);
+        if (meta != null && meta.hasNonNull("workspace")) {
+            String w = meta.get("workspace").asText();
+            if (w != null && !w.isBlank()) {
+                return Path.of(w.trim()).toAbsolutePath().normalize().toString();
+            }
+        }
+        return zcodeHome.workspace().toString();
+    }
+
+    public void setWorkspace(String sessionId, String workspace) throws IOException {
+        if (!exists(sessionId)) {
+            throw new IllegalArgumentException("unknown session: " + sessionId);
+        }
+        if (!StringUtils.hasText(workspace)) {
+            throw new IllegalArgumentException("workspace is required");
+        }
+        Path abs = Path.of(workspace.trim()).toAbsolutePath().normalize();
+        if (!Files.isDirectory(abs)) {
+            throw new IllegalArgumentException("not a directory: " + abs);
+        }
+        String title = readTitle(sessionId);
+        boolean renamed = isTitleRenamed(sessionId);
+        writeMeta(sessionId, title != null ? title : DEFAULT_TITLE, renamed, abs.toString());
+    }
+
+    /** Distinct workspace paths used by existing sessions (newest first). */
+    public List<String> listKnownWorkspaces() throws IOException {
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        String def = zcodeHome.workspace().toString();
+        set.add(def);
+        for (SessionInfo s : listSessions()) {
+            if (StringUtils.hasText(s.workspace())) {
+                set.add(Path.of(s.workspace()).toAbsolutePath().normalize().toString());
+            }
+        }
+        return List.copyOf(set);
     }
 
     /**
@@ -490,7 +688,7 @@ public class SessionStore {
         if (next == null || next.isBlank()) {
             return current;
         }
-        writeMeta(sessionId, next, false);
+        writeMeta(sessionId, next, false, readWorkspace(sessionId));
         return next;
     }
 
@@ -498,7 +696,7 @@ public class SessionStore {
         return sessionsDir.resolve(sessionId + ".meta.json");
     }
 
-    public record SessionInfo(String id, String title, long mtimeMs, int messageCount) {
+    public record SessionInfo(String id, String title, String workspace, long mtimeMs, int messageCount) {
         public String displayName() {
             return title != null && !title.isBlank() ? title : id;
         }
@@ -524,11 +722,16 @@ public class SessionStore {
         }
     }
 
-    private void writeMeta(String sessionId, String title, boolean renamed) throws IOException {
+    private void writeMeta(String sessionId, String title, boolean renamed, String workspace) throws IOException {
         ensureDir();
         var node = objectMapper.createObjectNode();
-        node.put("title", title);
+        node.put("title", title == null || title.isBlank() ? DEFAULT_TITLE : title);
         node.put("renamed", renamed);
+        String ws = workspace;
+        if (!StringUtils.hasText(ws)) {
+            ws = zcodeHome.workspace().toString();
+        }
+        node.put("workspace", Path.of(ws).toAbsolutePath().normalize().toString());
         Files.writeString(metaFile(sessionId), objectMapper.writeValueAsString(node), StandardCharsets.UTF_8);
     }
 

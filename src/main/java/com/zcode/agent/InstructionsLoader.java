@@ -10,14 +10,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * CLAUDE.md-style project/user instructions, auto-injected into the system prompt.
+ * Project instructions auto-injected into the system prompt.
  *
- * Lookup order (first existing wins per layer; user then project, both included):
- * <ol>
- *   <li>User: {@code ~/.zcode/ZCODE.md}</li>
- *   <li>Project (workspace), first hit among:
- *       {@code ZCODE.md}, {@code CLAUDE.md}, {@code AGENTS.md}, {@code .zcode/instructions.md}</li>
- * </ol>
+ * <p>First existing under workspace: {@code ZCODE.md}, {@code CLAUDE.md},
+ * {@code AGENTS.md}, {@code .zcode/instructions.md}.
  */
 @Component
 public class InstructionsLoader {
@@ -37,8 +33,6 @@ public class InstructionsLoader {
 
     public String loadCombined(Path workspace, int maxChars) {
         List<String> parts = new ArrayList<>();
-        Path userFile = Path.of(System.getProperty("user.home"), ".zcode", "ZCODE.md");
-        readIfPresent(userFile, "user ~/.zcode/ZCODE.md", parts);
         if (workspace != null) {
             for (String name : PROJECT_NAMES) {
                 Path p = workspace.resolve(name).normalize();
@@ -60,10 +54,6 @@ public class InstructionsLoader {
 
     public List<String> describeSources(Path workspace) {
         List<String> found = new ArrayList<>();
-        Path userFile = Path.of(System.getProperty("user.home"), ".zcode", "ZCODE.md");
-        if (Files.isRegularFile(userFile)) {
-            found.add(userFile.toString());
-        }
         if (workspace != null) {
             for (String name : PROJECT_NAMES) {
                 Path p = workspace.resolve(name);

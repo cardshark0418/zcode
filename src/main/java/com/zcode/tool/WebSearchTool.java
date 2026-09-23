@@ -28,9 +28,9 @@ import org.springframework.stereotype.Component;
 public class WebSearchTool implements Tool {
 
     private static final Pattern BING_ALGO = Pattern.compile(
-            "(?is)<li class=\"b_algo\".*?<h2>\\s*<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>");
+            "(?is)<(?:li|div)[^>]*class=\"[^\"]*\\bb_algo\\b[^\"]*\"[^>]*>.*?<h2[^>]*>\\s*<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>");
     private static final Pattern DDG_RESULT = Pattern.compile(
-            "(?is)<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>");
+            "(?is)<a[^>]*class=\"[^\"]*result__a[^\"]*\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>");
     private static final Pattern UDDG = Pattern.compile("uddg=([^&]+)");
     private static final Pattern WEATHER_HINT = Pattern.compile(
             "(?i)(天气|氣溫|气温|weather|forecast|temperature|降雨|湿度)");
@@ -93,6 +93,9 @@ public class WebSearchTool implements Tool {
         List<Hit> hits = List.of();
         try {
             hits = searchBing(query, max);
+            if (hits.isEmpty()) {
+                errors.add("bing: no parseable results");
+            }
         } catch (Exception e) {
             errors.add("bing: " + shortErr(e));
         }
@@ -150,7 +153,7 @@ public class WebSearchTool implements Tool {
 
     private List<Hit> searchDdgHtml(String query, int max) throws Exception {
         String q = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        String html = httpGet("https://html.duckduckgo.com/html/?q=" + q, Duration.ofSeconds(10));
+        String html = httpGet("https://html.duckduckgo.com/html/?q=" + q, Duration.ofSeconds(6));
         Matcher m = DDG_RESULT.matcher(html);
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         List<Hit> hits = new ArrayList<>();
@@ -245,11 +248,16 @@ public class WebSearchTool implements Tool {
                 .build();
         CompletableFuture<HttpResponse<String>> future =
                 httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        HttpResponse<String> response = future.get(timeout.toMillis() + 500, TimeUnit.MILLISECONDS);
-        if (response.statusCode() < 200 || response.statusCode() >= 400) {
-            throw new IllegalStateException("HTTP " + response.statusCode());
+        try {
+            HttpResponse<String> response = future.get(timeout.toMillis() + 500, TimeUnit.MILLISECONDS);
+            if (response.statusCode() < 200 || response.statusCode() >= 400) {
+                throw new IllegalStateException("HTTP " + response.statusCode());
+            }
+            return response.body() == null ? "" : response.body();
+        } catch (Exception e) {
+            future.cancel(true);
+            throw e;
         }
-        return response.body() == null ? "" : response.body();
     }
 
     private static String decodeUrl(String href) {

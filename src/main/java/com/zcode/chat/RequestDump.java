@@ -1,12 +1,13 @@
 package com.zcode.chat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zcode.config.ZcodeHome;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Writes the last LLM request body under ~/.zcode for inspection.
+ * Writes the last LLM request body under {@code <workspace>/.zcode} for inspection.
  */
 final class RequestDump {
 
@@ -14,7 +15,7 @@ final class RequestDump {
 
     static void write(ObjectMapper mapper, String name, String bodyJson) {
         try {
-            Path dir = Path.of(System.getProperty("user.home"), ".zcode");
+            Path dir = ZcodeHome.resolveHomeStatic();
             Files.createDirectories(dir);
             Object pretty = mapper.readTree(bodyJson);
             String out = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(pretty);

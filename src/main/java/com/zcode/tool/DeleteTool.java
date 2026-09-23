@@ -48,8 +48,11 @@ public class DeleteTool implements Tool {
         }
         byte[] beforeBytes = Files.readAllBytes(path);
         Files.delete(path);
-        checkpointService.recordMutate(path, beforeBytes, null);
-        return ToolResult.ok("deleted " + path);
+        String msg = "deleted " + path;
+        if (!checkpointService.recordMutate(path, beforeBytes, null)) {
+            msg += "\n[warn] 检查点未记录，回滚可能无法还原此文件";
+        }
+        return ToolResult.ok(msg);
     }
 
     private static String text(JsonNode input, String field) {

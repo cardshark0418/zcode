@@ -6,9 +6,9 @@ Java coding agent CLI（Spring Boot）：终端里对话、调工具改代码，
 
 - **Agent loop** — Anthropic Messages + function calling
 - **Tools** — bash, read/write/edit, glob/grep, websearch/webfetch, todowrite, ask_user, skill
-- **Memory** — JSONL sessions under `~/.zcode/sessions`，自动/手动压缩
+- **Memory** — JSONL sessions under `<workspace>/.zcode/sessions`，自动/手动压缩
 - **Permissions** — `chat` · `read-only` · `default` · `auto-confirm`（Shift+Tab 切换）
-- **Trace** — `~/.zcode/sessions/<id>.events.jsonl`，CLI `/trace`
+- **Trace** — `.zcode/sessions/<id>.events.jsonl`，CLI `/trace`
 - **Instructions / skills** — `ZCODE.md` / `CLAUDE.md` / `AGENTS.md`，以及 `.zcode/skills/`
 
 可选：`zcode serve` 打开 Web 控制台（对标 harness 风格：侧栏会话、流式对话、工具行、权限模式、人机确认）。
@@ -37,7 +37,8 @@ powershell -ExecutionPolicy Bypass -File .\bin\install.ps1
 新开终端：
 
 ```powershell
-zcode
+.\bin\zcode.cmd
+.\bin\zcode.cmd serve
 ```
 
 ### LLM 环境变量
@@ -57,8 +58,8 @@ zcode
 
 | 命令 | 作用 |
 |------|------|
-| `zcode` | 交互式 agent |
-| `zcode serve` | 网页 http://localhost:8080 |
+| `.\bin\zcode.cmd` | 交互式 agent |
+| `.\bin\zcode.cmd serve` | 网页 http://localhost:8080 |
 | `/help` | 帮助 |
 | `/mode` · `/mode X` | 权限模式 |
 | `/tools` · `/skills` · `/session` | 状态 |

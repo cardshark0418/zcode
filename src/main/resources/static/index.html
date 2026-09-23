@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>zcode</title>
-  <link rel="stylesheet" href="/app.css" />
+  <link rel="stylesheet" href="/app.css?v=ws-native" />
 </head>
 <body>
   <div class="app">
@@ -50,7 +50,7 @@
             </button>
             <button type="button" class="view-tab" data-view="trace" id="tabTrace">
               <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>
-              <span>流</span>
+              <span>轨迹</span>
             </button>
           </div>
         </div>
@@ -82,42 +82,42 @@
       </div>
 
       <div class="composer-seat">
-        <div class="undo-bar hidden" id="undoBar">
-          <span>已回滚到检查点</span>
-          <button type="button" class="btn-ghost sm" id="btnUndoRestore">撤销回滚</button>
-        </div>
-        <div class="composer-card">
-          <textarea id="input" rows="2" placeholder="给 zcode 发消息…" ></textarea>
-          <div class="composer-bar">
-            <div class="composer-left">
-              <div class="cfg-wrap" id="modelWrap">
-                <button type="button" class="cfg-pill" id="modelPill" aria-haspopup="true" aria-expanded="false">
-                  <svg class="ico cfg-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 4.5L19 9l-3.5 3.4.8 4.9L12 15.3 7.7 17.3l.8-4.9L5 9l4.8-1.5L12 3z"/></svg>
-                  <span class="cfg-pill-text" id="modelPillText">model</span>
-                  <svg class="ico cfg-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
-                </button>
-                <div class="cfg-popover hidden" id="modelPopover" role="menu">
-                  <div class="cfg-row static">
-                    <span class="cfg-label">模型</span>
-                    <span class="cfg-value" id="cfgModelValue">—</span>
+        <div class="composer-stack">
+          <div class="undo-bar hidden" id="undoBar">
+            <span>已回滚到检查点</span>
+            <button type="button" class="btn-ghost sm" id="btnUndoRestore">撤销回滚</button>
+          </div>
+          <div class="composer-card">
+            <div class="mention-popup hidden" id="mentionPopup" role="listbox" aria-label="引用文件"></div>
+            <textarea id="input" rows="2" placeholder="给 zcode 发消息… 输入 @ 引用文件" ></textarea>
+            <div class="composer-bar">
+              <div class="composer-left">
+                <div class="cfg-wrap" id="modelWrap">
+                  <button type="button" class="cfg-pill" id="modelPill" aria-haspopup="true" aria-expanded="false">
+                    <svg class="ico cfg-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 4.5L19 9l-3.5 3.4.8 4.9L12 15.3 7.7 17.3l.8-4.9L5 9l4.8-1.5L12 3z"/></svg>
+                    <span class="cfg-pill-text" id="modelPillText">model</span>
+                    <svg class="ico cfg-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
+                  </button>
+                  <div class="cfg-popover hidden" id="modelPopover" role="menu">
+                    <div class="cfg-mode-list" id="cfgProviderList"></div>
+                  </div>
+                </div>
+                <div class="cfg-wrap" id="modeWrap">
+                  <button type="button" class="cfg-pill" id="modePill" aria-haspopup="true" aria-expanded="false">
+                    <span class="cfg-mode-ico" id="modePillIcon" aria-hidden="true"></span>
+                    <span class="cfg-pill-text" id="modePillText">mode</span>
+                    <svg class="ico cfg-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
+                  </button>
+                  <div class="cfg-popover hidden" id="modePopover" role="menu">
+                    <div class="cfg-mode-list" id="cfgModeList"></div>
                   </div>
                 </div>
               </div>
-              <div class="cfg-wrap" id="modeWrap">
-                <button type="button" class="cfg-pill" id="modePill" aria-haspopup="true" aria-expanded="false">
-                  <span class="cfg-mode-ico" id="modePillIcon" aria-hidden="true"></span>
-                  <span class="cfg-pill-text" id="modePillText">mode</span>
-                  <svg class="ico cfg-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
+              <div class="composer-right">
+                <button type="button" class="btn-send" id="btnSend" title="发送" aria-label="发送">
+                  <svg class="ico send-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
                 </button>
-                <div class="cfg-popover hidden" id="modePopover" role="menu">
-                  <div class="cfg-mode-list" id="cfgModeList"></div>
-                </div>
               </div>
-            </div>
-            <div class="composer-right">
-              <button type="button" class="btn-send" id="btnSend" title="发送" aria-label="发送">
-                <svg class="ico send-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
-              </button>
             </div>
           </div>
         </div>
@@ -145,6 +145,10 @@
           <button type="button" class="settings-nav-item" data-settings-tab="models">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
             <span>模型</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="skills">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 4.5L19 8.2l-3.5 3.4.8 4.9L12 14.8 7.7 16.5l.8-4.9L5 8.2l4.8-.7L12 3z"/></svg>
+            <span>Skills</span>
           </button>
         </nav>
         <div class="settings-panels">
@@ -180,7 +184,19 @@
           </section>
 
           <section class="settings-panel" data-settings-panel="models" id="settingsPanelModels">
-            <p class="muted settings-intro">填入各提供方的 API 密钥与地址。保存在本机，立即生效；环境变量优先且只读。</p>
+            <p class="muted settings-intro">可添加多家提供方，切换选用。密钥保存在本机；环境变量优先且只读。</p>
+            <div class="provider-toolbar">
+              <div class="provider-list" id="providerList"></div>
+              <button type="button" class="btn-ghost sm" id="btnAddProvider">添加提供方</button>
+            </div>
+            <input type="hidden" id="llmProviderId" value="" />
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">显示名称</div>
+                <div class="settings-row-desc">列表与切换器里显示的名字</div>
+              </div>
+              <input type="text" id="llmName" class="settings-control wide" placeholder="例如 DeepSeek" autocomplete="off" />
+            </div>
             <div class="settings-row">
               <div class="settings-row-copy">
                 <div class="settings-row-title">API 协议</div>
@@ -213,9 +229,21 @@
               <input type="text" id="llmModel" class="settings-control wide" placeholder="claude-opus-4-6" autocomplete="off" />
             </div>
             <div class="settings-panel-foot">
-              <span class="llm-status" id="llmStatus">—</span>
-              <button type="button" class="btn-primary" id="btnSaveLlm">保存</button>
+              <div class="llm-foot-left">
+                <span class="llm-status" id="llmStatus">—</span>
+                <button type="button" class="btn-ghost sm" id="btnDeleteProvider">删除</button>
+              </div>
+              <div class="llm-foot-right">
+                <button type="button" class="btn-ghost sm" id="btnUseProvider">设为当前</button>
+                <button type="button" class="btn-primary" id="btnSaveLlm">保存</button>
+              </div>
             </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="skills" id="settingsPanelSkills">
+            <p class="muted settings-intro">当前可加载的 Agent Skills（<code>.zcode/skills</code>）。对话中可通过 skill 工具按名称加载。</p>
+            <div class="skill-list" id="settingsSkillList"></div>
+            <p class="muted settings-hint" id="settingsSkillEmpty" hidden>暂无 skill。在工作区创建 <code>.zcode/skills/&lt;name&gt;/SKILL.md</code> 后刷新设置即可看到。</p>
           </section>
         </div>
       </div>
@@ -225,13 +253,14 @@
   <div class="modal-mask hidden" id="restoreMask">
     <div class="modal restore-modal">
       <div class="modal-head">
-        <strong>丢弃此检查点之后的所有更改？</strong>
+        <strong id="restoreTitle">丢弃此检查点之后的所有更改？</strong>
         <button type="button" class="icon-btn" id="btnCloseRestore" title="关闭" aria-label="关闭">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
       <div class="modal-body">
-        <p class="muted restore-sub">之后仍可撤销</p>
+        <p class="muted restore-sub" id="restoreSub">之后仍可撤销</p>
+        <ul class="restore-conflicts hidden" id="restoreConflicts"></ul>
         <div class="restore-actions">
           <label class="restore-dontask">
             <input type="checkbox" id="restoreDontAsk" />
@@ -246,6 +275,6 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=ws-native"></script>
 </body>
 </html>

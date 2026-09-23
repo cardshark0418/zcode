@@ -233,6 +233,11 @@ public class InteractiveCli {
         try {
             checkpointService.clearUndo(sessionId);
 
+            List<String> pruned = sessionStore.dropTrailingUnansweredUserMessages(sessionId);
+            if (!pruned.isEmpty()) {
+                Cui.status("已忽略 " + pruned.size() + " 条未完成的先前指令");
+            }
+
             eventStore.emit(
                     "turn.start",
                     ctx,
@@ -273,7 +278,11 @@ public class InteractiveCli {
                             streamStarted[0] = false;
                         }
                         stopSpinner();
-                        Cui.toolEvent(event);
+                        if (event != null && event.contains("正在重试")) {
+                            Cui.status(event);
+                        } else {
+                            Cui.toolEvent(event);
+                        }
                         if (event != null && event.startsWith("tool · ask_user")) {
                             return;
                         }
