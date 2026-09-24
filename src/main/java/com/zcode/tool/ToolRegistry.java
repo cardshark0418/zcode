@@ -59,8 +59,10 @@ public class ToolRegistry {
     }
 
     public ToolContext context(String sessionId, AskUserHandler askUser, ToolApprover approver) {
+        Path fallback = workspaceForSession(sessionId);
         return new ToolContext(
-                workspaceForSession(sessionId),
+                workspaceService,
+                fallback,
                 agentProperties.safeMaxToolOutputChars(),
                 sessionId,
                 askUser,

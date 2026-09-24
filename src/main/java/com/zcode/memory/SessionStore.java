@@ -30,11 +30,13 @@ public class SessionStore {
     private final ObjectMapper objectMapper;
     private final Path sessionsDir;
     private final int maxTurns;
+    private final int retainTokens;
     private final ZcodeHome zcodeHome;
 
     public SessionStore(ObjectMapper objectMapper, MemoryProperties memoryProperties, ZcodeHome zcodeHome) {
         this.objectMapper = objectMapper;
         this.maxTurns = memoryProperties.safeMaxTurns();
+        this.retainTokens = memoryProperties.safeRetainTokens();
         this.zcodeHome = zcodeHome;
         if (StringUtils.hasText(memoryProperties.dir())) {
             this.sessionsDir = Path.of(memoryProperties.dir());
@@ -363,13 +365,21 @@ public class SessionStore {
     }
 
     /**
-     * Build model context: system summary + last {@code maxTurns} raw pairs.
+     * Build model context: last {@code maxTurns} raw pairs, with compaction summary (if any)
+     * prepended as a checkpoint {@code user} message in the dialogue (not in system).
      * Trailing unanswered user lines are omitted so a new turn cannot re-execute a restored intent.
      */
     public ContextView buildContextView(String sessionId) throws IOException {
         SessionSnapshot snap = snapshot(sessionId);
-        return new ContextView(
-                snap.summary(), truncateDialogue(withoutTrailingUnansweredUsers(snap.dialogue())));
+        List<ChatMessage> dialogue =
+                truncateDialogue(withoutTrailingUnansweredUsers(snap.dialogue()));
+        if (snap.hasSummary()) {
+            List<ChatMessage> withCheckpoint = new ArrayList<>(dialogue.size() + 1);
+            withCheckpoint.add(CompactionCheckpoint.asUserMessage(snap.summary()));
+            withCheckpoint.addAll(dialogue);
+            dialogue = List.copyOf(withCheckpoint);
+        }
+        return new ContextView(snap.summary(), dialogue);
     }
 
     /**
@@ -516,24 +526,11 @@ public class SessionStore {
     }
 
     /**
-     * Keep the last {@code maxTurns} plain user turns (and everything after that cut),
-     * so tool_use / tool_result chains stay intact.
+     * Keep a raw tail under {@code retainTokens} and at most {@code maxTurns} plain-user turns,
+     * cutting only at user boundaries so tool_use / tool_result chains stay intact.
      */
     public List<ChatMessage> truncateDialogue(List<ChatMessage> dialogue) {
-        if (dialogue.isEmpty()) {
-            return List.of();
-        }
-        List<Integer> plainUserIdx = new ArrayList<>();
-        for (int i = 0; i < dialogue.size(); i++) {
-            if (dialogue.get(i).isPlainUser()) {
-                plainUserIdx.add(i);
-            }
-        }
-        if (plainUserIdx.size() <= maxTurns) {
-            return List.copyOf(dialogue);
-        }
-        int start = plainUserIdx.get(plainUserIdx.size() - maxTurns);
-        return List.copyOf(dialogue.subList(start, dialogue.size()));
+        return DialogueTail.select(dialogue, retainTokens, maxTurns);
     }
 
     /** @deprecated use {@link #truncateDialogue(List)} */

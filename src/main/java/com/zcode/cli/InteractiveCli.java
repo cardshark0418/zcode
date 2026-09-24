@@ -250,7 +250,7 @@ public class InteractiveCli {
             }
 
             ContextView view = sessionStore.buildContextView(sessionId);
-            String system = agentService.buildSystemPrompt(view.systemSummary());
+            String system = agentService.buildSystemPrompt();
             eventStore.emit(
                     "request.header",
                     ctx,
@@ -265,7 +265,6 @@ public class InteractiveCli {
 
             final boolean[] streamStarted = {false};
             AgentService.AgentOutcome outcome = agentService.run(
-                    view.systemSummary(),
                     view.messages(),
                     userMsg,
                     sessionId,

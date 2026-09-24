@@ -90,7 +90,7 @@ public class AgentTurnService {
             }
 
             ContextView view = sessionStore.buildContextView(sessionId);
-            String system = agentService.buildSystemPrompt(view.systemSummary());
+            String system = agentService.buildSystemPrompt();
             eventStore.emit(
                     "request.header",
                     ctx,
@@ -142,7 +142,6 @@ public class AgentTurnService {
             };
 
             AgentService.AgentOutcome outcome = agentService.run(
-                    view.systemSummary(),
                     view.messages(),
                     userMsg,
                     sessionId,

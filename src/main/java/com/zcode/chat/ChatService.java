@@ -77,8 +77,8 @@ public class ChatService {
     }
 
     /**
-     * @param systemSummary optional compaction summary → Anthropic top-level {@code system} /
-     *                      OpenAI {@code role=system} message
+     * @param systemSummary full system instructions (environment / tools). Compaction summary is
+     *                      carried in {@code messages} as a checkpoint user message, not here.
      */
     public void stream(String systemSummary, List<ChatMessage> messages, Consumer<String> onPartial) {
         if (messages == null || messages.isEmpty()) {

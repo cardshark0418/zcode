@@ -11,19 +11,49 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
- * Overflow → LLM summary (system) + keep last N raw turns.
+ * Overflow → LLM summary + keep a raw tail under token budget (and max-turns cap).
+ * Summary is persisted as role=summary; at request time it is injected as a checkpoint
+ * user message in {@code messages[]} (not into system).
  */
 @Service
 public class CompactionService {
 
     static final String COMPACT_SYSTEM = """
-            你是会话记忆压缩器。根据给定的对话材料，写出一份给后续助手用的「系统摘要」。
-            要求：
-            1. 必须保留硬事实：工作区/项目路径、环境与工具约定、已确认的技术选型、当前目标、未完成事项。
-            2. 必须保留用户明确要求记住的约束（如「记住」「必须」「不要忘」「始终」等）。
-            3. 丢掉过时方案、已纠正的错误、寒暄、重复试错细节。
-            4. 用简洁中文分点书写；不要寒暄；不要编造材料中没有的信息。
-            5. 若已有旧摘要，在其基础上合并更新，而不是从零重写后丢失旧硬事实。
+            你正在执行一次「上下文检查点压缩」。请为另一个将接手该任务的编程助手写一份交接摘要。
+
+            必须严格按下面 Markdown 结构输出：保留全部章节、顺序不变；每节用简短条目，不要写成大段散文；某节无内容时写「无」，禁止删节。
+
+            ## 主要请求与意图
+            - [用户最初及后续演变的目标；措辞关键处可原文引用]
+
+            ## 关键技术概念
+            - [涉及的技术、框架、模式与约定]
+
+            ## 文件与代码
+            - [确切路径：为何重要、关键改动或片段]
+
+            ## 错误与修复
+            - [错误：如何解决；相关用户反馈]
+
+            ## 未完成事项
+            - [已明确要求但尚未完成的工作]
+
+            ## 当前工作
+            - [截至本检查点正在进行的具体事项]
+
+            ## 下一步
+            - [与最近请求直接对齐的下一步动作；若无则写「无」]
+
+            ## 关键上下文
+            - [决策及理由、约束、用户偏好、未决问题、继续所需的数据/示例/引用]
+            - [用户明确要求记住的约束，如「记住」「必须」「不要忘」「始终」等]
+
+            规则：
+            1. 使用简洁中文；路径、命令、报错原文、标识符、数字、函数签名与语法片段保持原样，不要翻译或改写。
+            2. 忠实保留用户反馈与明确指令，尤其是纠正。
+            3. 丢掉寒暄、重复试错过程中已过时的中间方案；不要编造材料中没有的信息。
+            4. 不要提及「正在压缩 / 正在总结」本身，也不要调用任何工具；只输出检查点正文。
+            5. 若材料中已有旧摘要或 <compacted-summary>，视为 PRIOR 检查点：保留仍成立的事实，丢掉过时项，合并进同一结构，不要整段照抄。
             """;
 
     private final SessionStore sessionStore;
@@ -82,19 +112,20 @@ public class CompactionService {
             return false;
         }
 
-        int keepPairs = memoryProperties.safeMaxTurns();
-        if (force && !overTurns && !overBudget) {
-            keepPairs = Math.max(2, memoryProperties.safeMaxTurns() / 2);
-        } else if (overBudget && !overTurns) {
-            keepPairs = Math.max(2, memoryProperties.safeMaxTurns() / 2);
+        int retainTokens = memoryProperties.safeRetainTokens();
+        int maxTurns = memoryProperties.safeMaxTurns();
+        // Force / token-pressure: keep a smaller tail so more history folds into the summary.
+        if (force || (overBudget && !overTurns)) {
+            retainTokens = Math.max(512, retainTokens / 2);
+            maxTurns = Math.max(2, maxTurns / 2);
         }
 
-        List<ChatMessage> tail = takeLastPlainUserTurns(dialogue, keepPairs);
+        List<ChatMessage> tail = DialogueTail.select(dialogue, retainTokens, maxTurns);
         if (tail.size() >= dialogue.size()) {
             if (!force) {
                 return false;
             }
-            tail = takeLastPlainUserTurns(dialogue, 2);
+            tail = DialogueTail.select(dialogue, Math.max(512, retainTokens / 2), 2);
             if (tail.size() >= dialogue.size()) {
                 return false;
             }
@@ -124,32 +155,16 @@ public class CompactionService {
                         "reason", reason,
                         "summaryChars", newSummary.trim().length(),
                         "foldedMessages", head.size(),
-                        "keptMessages", tail.size()));
+                        "keptMessages", tail.size(),
+                        "retainTokens", retainTokens,
+                        "keptTokens", TokenEstimator.estimateMessages(tail)));
         return true;
-    }
-
-    private static List<ChatMessage> takeLastPlainUserTurns(List<ChatMessage> dialogue, int turns) {
-        List<Integer> plainUserIdx = new ArrayList<>();
-        for (int i = 0; i < dialogue.size(); i++) {
-            if (dialogue.get(i).isPlainUser()) {
-                plainUserIdx.add(i);
-            }
-        }
-        if (plainUserIdx.isEmpty()) {
-            return List.copyOf(dialogue);
-        }
-        int keep = Math.max(1, turns);
-        if (plainUserIdx.size() <= keep) {
-            return List.copyOf(dialogue);
-        }
-        int start = plainUserIdx.get(plainUserIdx.size() - keep);
-        return List.copyOf(dialogue.subList(start, dialogue.size()));
     }
 
     private static String buildCompactUserPrompt(String oldSummary, List<ChatMessage> head) {
         StringBuilder sb = new StringBuilder();
         if (StringUtils.hasText(oldSummary)) {
-            sb.append("【旧摘要】\n").append(oldSummary.trim()).append("\n\n");
+            sb.append("【旧检查点 / PRIOR】\n").append(oldSummary.trim()).append("\n\n");
         }
         sb.append("【需折叠的对话】\n");
         for (ChatMessage m : head) {
@@ -166,7 +181,7 @@ public class CompactionService {
                 sb.append(m.role()).append(": ").append(m.content() == null ? "" : m.content()).append("\n\n");
             }
         }
-        sb.append("请输出更新后的系统摘要：");
+        sb.append("请按系统要求的固定章节输出更新后的交接检查点（不要寒暄）：");
         return sb.toString();
     }
 

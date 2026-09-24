@@ -13,12 +13,16 @@ zcode:
   memory:
     # empty = <workspace>/.zcode/sessions
     dir: ${ZCODE_MEMORY_DIR:}
-    # keep last N user/assistant pairs as raw dialogue
+    # hard cap on plain-user turns kept as raw dialogue (with retain budget)
     max-turns: ${ZCODE_MEMORY_MAX_TURNS:20}
     # soft context budget (heuristic tokens); compact at budget * threshold
     context-budget: ${ZCODE_MEMORY_CONTEXT_BUDGET:100000}
     compact-threshold: ${ZCODE_MEMORY_COMPACT_THRESHOLD:0.8}
     compact-max-tokens: ${ZCODE_MEMORY_COMPACT_MAX_TOKENS:2048}
+    # raw tail size after compaction / when sending to the model (DSH-style)
+    retain-ratio: ${ZCODE_MEMORY_RETAIN_RATIO:0.16}
+    # 0 = use context-budget * retain-ratio; else absolute heuristic tokens
+    retain-tokens: ${ZCODE_MEMORY_RETAIN_TOKENS:0}
   agent:
     enabled: ${ZCODE_AGENT_ENABLED:true}
     # empty = process working directory

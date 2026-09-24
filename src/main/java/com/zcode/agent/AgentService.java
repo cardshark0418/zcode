@@ -65,7 +65,6 @@ public class AgentService {
     public record AgentOutcome(String finalText, List<ChatMessage> newMessages) {}
 
     public AgentOutcome run(
-            String systemSummary,
             List<ChatMessage> prior,
             ChatMessage userMsg,
             String sessionId,
@@ -75,7 +74,6 @@ public class AgentService {
             Consumer<String> onEvent,
             Consumer<String> onPartialText) {
         return run(
-                systemSummary,
                 prior,
                 userMsg,
                 sessionId,
@@ -87,8 +85,11 @@ public class AgentService {
                 null);
     }
 
+    /**
+     * @param prior dialogue for the model; may start with a compaction checkpoint user message
+     *     from {@link com.zcode.memory.SessionStore#buildContextView(String)}
+     */
     public AgentOutcome run(
-            String systemSummary,
             List<ChatMessage> prior,
             ChatMessage userMsg,
             String sessionId,
@@ -108,7 +109,7 @@ public class AgentService {
         List<ChatMessage> persisted = new ArrayList<>();
         persisted.add(userMsg);
 
-        String system = buildSystem(systemSummary, sessionId);
+        String system = buildSystem(sessionId);
         boolean toolsOn = toolRegistry.enabled();
         ArrayNode tools = null;
         if (toolsOn) {
@@ -193,11 +194,17 @@ public class AgentService {
     }
 
     /** Public for request.header logging / trajectory projection. */
-    public String buildSystemPrompt(String summary) {
-        return buildSystem(summary, TraceContextHolder.sessionId());
+    public String buildSystemPrompt() {
+        return buildSystem(TraceContextHolder.sessionId());
     }
 
-    private String buildSystem(String summary, String sessionId) {
+    /** @deprecated compaction summary is injected as a checkpoint user message; use {@link #buildSystemPrompt()} */
+    @Deprecated
+    public String buildSystemPrompt(String ignoredSummary) {
+        return buildSystemPrompt();
+    }
+
+    private String buildSystem(String sessionId) {
         Path workspace =
                 StringUtils.hasText(sessionId)
                         ? toolRegistry.workspaceForSession(sessionId)
@@ -230,6 +237,7 @@ public class AgentService {
             sb.append("- edit：old_string 必须能唯一匹配（否则设 replace_all=true）。\n");
             sb.append("- write：新建或整文件覆盖；对已有文件的小改动优先用 edit。\n");
             sb.append("- delete：删除工作区内的文件（不要用 bash rm，以便检查点可回滚）。\n");
+            sb.append("- set_workspace：把本会话工具根目录改到用户指定的绝对路径（如桌面）；不必重启 zcode。\n");
             sb.append("- 改写已有文件前先 read（除非本回合刚用 write 创建）。\n");
             sb.append("- bash：用于构建、测试、git 等；路径加引号；Windows 上优先用 PowerShell 友好命令。\n");
             sb.append("- 核对中文文案时优先用 grep/read 查文件，不要用 PowerShell -match 直接比对中文（易乱码误判）。\n");
@@ -270,10 +278,6 @@ public class AgentService {
             }
         }
 
-        if (StringUtils.hasText(summary)) {
-            sb.append("\n## 会话记忆摘要\n");
-            sb.append(summary.trim()).append('\n');
-        }
         return sb.toString();
     }
 

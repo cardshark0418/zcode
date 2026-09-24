@@ -20,7 +20,7 @@ public enum PermissionMode {
     AUTO_CONFIRM("auto-confirm", "全部工具可用，无需确认");
 
     private static final Set<String> READ_TOOLS = Set.of(
-            "read", "glob", "grep", "webfetch", "websearch", "skill", "ask_user", "todowrite");
+            "read", "glob", "grep", "webfetch", "websearch", "skill", "ask_user", "todowrite", "set_workspace");
 
     private final String id;
     private final String description;
@@ -67,7 +67,7 @@ public enum PermissionMode {
         String name = toolName.trim().toLowerCase(Locale.ROOT);
         return switch (this) {
             case CHAT, READ_ONLY, AUTO_CONFIRM -> false;
-            case DEFAULT -> "bash".equals(name) || "delete".equals(name);
+            case DEFAULT -> "bash".equals(name) || "delete".equals(name) || "set_workspace".equals(name);
         };
     }
 
@@ -102,11 +102,12 @@ public enum PermissionMode {
         return switch (this) {
             case CHAT -> "工具：chat 模式下禁用。仅根据上下文回答，不要调用工具。";
             case READ_ONLY ->
-                    "可用工具：read、glob、grep、webfetch、websearch、skill、ask_user、todowrite。"
+                    "可用工具：read、glob、grep、webfetch、websearch、skill、ask_user、todowrite、set_workspace。"
                             + "禁止写文件、edit、delete 或运行 bash。";
             case DEFAULT ->
-                    "工具：全开。可编辑/删除工作区文件。运行 bash 或 delete 前需要用户确认。";
-            case AUTO_CONFIRM -> "工具：全开且自动批准（无需确认）。";
+                    "工具：全开。可编辑/删除工作区文件；可用 set_workspace 切换本会话工具根目录。"
+                            + "运行 bash、delete 或 set_workspace 前需要用户确认。";
+            case AUTO_CONFIRM -> "工具：全开且自动批准（无需确认），含 set_workspace。";
         };
     }
 }
