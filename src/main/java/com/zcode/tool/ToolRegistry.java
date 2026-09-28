@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zcode.config.AgentProperties;
 import com.zcode.config.WorkspaceService;
+import com.zcode.mcp.McpManager;
+import com.zcode.mcp.McpProxyTool;
 import com.zcode.permission.PermissionMode;
 import com.zcode.permission.PermissionService;
 import java.nio.file.Path;
@@ -18,12 +20,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class ToolRegistry {
 
-    private final Map<String, Tool> tools = new LinkedHashMap<>();
+    private final Map<String, Tool> builtin = new LinkedHashMap<>();
     private final AgentProperties agentProperties;
     private final ObjectMapper objectMapper;
     private final TodoStore todoStore;
     private final PermissionService permissionService;
     private final WorkspaceService workspaceService;
+    private final McpManager mcpManager;
 
     public ToolRegistry(
             List<Tool> toolList,
@@ -31,14 +34,20 @@ public class ToolRegistry {
             ObjectMapper objectMapper,
             TodoStore todoStore,
             PermissionService permissionService,
-            WorkspaceService workspaceService) {
+            WorkspaceService workspaceService,
+            McpManager mcpManager) {
         this.agentProperties = agentProperties;
         this.objectMapper = objectMapper;
         this.todoStore = todoStore;
         this.permissionService = permissionService;
         this.workspaceService = workspaceService;
+        this.mcpManager = mcpManager;
         for (Tool tool : toolList) {
-            tools.put(tool.name(), tool);
+            // MCP proxy tools are registered dynamically via McpManager, not as Spring beans.
+            if (tool instanceof McpProxyTool) {
+                continue;
+            }
+            builtin.put(tool.name(), tool);
         }
     }
 
@@ -73,7 +82,7 @@ public class ToolRegistry {
     public ArrayNode anthropicToolsArray() {
         PermissionMode mode = permissionService.mode();
         ArrayNode arr = objectMapper.createArrayNode();
-        for (Tool tool : tools.values()) {
+        for (Tool tool : allTools().values()) {
             if (!mode.allows(tool.name())) {
                 continue;
             }
@@ -89,7 +98,7 @@ public class ToolRegistry {
     public ArrayNode openaiToolsArray() {
         PermissionMode mode = permissionService.mode();
         ArrayNode arr = objectMapper.createArrayNode();
-        for (Tool tool : tools.values()) {
+        for (Tool tool : allTools().values()) {
             if (!mode.allows(tool.name())) {
                 continue;
             }
@@ -104,7 +113,7 @@ public class ToolRegistry {
     }
 
     public ToolResult execute(String name, JsonNode input, ToolContext ctx) {
-        Tool tool = tools.get(name);
+        Tool tool = allTools().get(name);
         if (tool == null) {
             return ToolResult.error("unknown tool: " + name);
         }
@@ -131,19 +140,34 @@ public class ToolRegistry {
     }
 
     public List<String> names() {
-        return List.copyOf(tools.keySet());
+        return List.copyOf(allTools().keySet());
     }
 
     /** Tools allowed under the current permission mode. */
     public List<String> allowedNames() {
         PermissionMode mode = permissionService.mode();
         List<String> out = new ArrayList<>();
-        for (String name : tools.keySet()) {
+        for (String name : allTools().keySet()) {
             if (mode.allows(name)) {
                 out.add(name);
             }
         }
         return List.copyOf(out);
+    }
+
+    public McpManager mcp() {
+        return mcpManager;
+    }
+
+    private Map<String, Tool> allTools() {
+        Map<String, Tool> map = new LinkedHashMap<>(builtin);
+        if (mcpManager != null) {
+            for (Tool t : mcpManager.tools()) {
+                // Builtin wins on name clash.
+                map.putIfAbsent(t.name(), t);
+            }
+        }
+        return map;
     }
 
     private static String summarize(String name, JsonNode input) {

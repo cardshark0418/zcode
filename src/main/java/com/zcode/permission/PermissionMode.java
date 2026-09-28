@@ -20,7 +20,16 @@ public enum PermissionMode {
     AUTO_CONFIRM("auto-confirm", "全部工具可用，无需确认");
 
     private static final Set<String> READ_TOOLS = Set.of(
-            "read", "glob", "grep", "webfetch", "websearch", "skill", "ask_user", "todowrite", "set_workspace");
+            "read",
+            "glob",
+            "grep",
+            "webfetch",
+            "websearch",
+            "skill",
+            "ask_user",
+            "todowrite",
+            "set_workspace",
+            "mcp_manage");
 
     private final String id;
     private final String description;
@@ -52,6 +61,10 @@ public enum PermissionMode {
             return false;
         }
         String name = toolName.trim().toLowerCase(Locale.ROOT);
+        // MCP tools are open only when write/shell modes are on (unknown side effects).
+        if (isMcp(name)) {
+            return this == DEFAULT || this == AUTO_CONFIRM;
+        }
         return switch (this) {
             case CHAT -> false;
             case READ_ONLY -> READ_TOOLS.contains(name);
@@ -67,8 +80,17 @@ public enum PermissionMode {
         String name = toolName.trim().toLowerCase(Locale.ROOT);
         return switch (this) {
             case CHAT, READ_ONLY, AUTO_CONFIRM -> false;
-            case DEFAULT -> "bash".equals(name) || "delete".equals(name) || "set_workspace".equals(name);
+            case DEFAULT ->
+                    "bash".equals(name)
+                            || "delete".equals(name)
+                            || "set_workspace".equals(name)
+                            || "mcp_manage".equals(name)
+                            || isMcp(name);
         };
+    }
+
+    private static boolean isMcp(String name) {
+        return name != null && name.startsWith("mcp__");
     }
 
     public static PermissionMode parse(String raw) {
@@ -102,12 +124,12 @@ public enum PermissionMode {
         return switch (this) {
             case CHAT -> "工具：chat 模式下禁用。仅根据上下文回答，不要调用工具。";
             case READ_ONLY ->
-                    "可用工具：read、glob、grep、webfetch、websearch、skill、ask_user、todowrite、set_workspace。"
-                            + "禁止写文件、edit、delete 或运行 bash。";
+                    "可用工具：read、glob、grep、webfetch、websearch、skill、ask_user、todowrite、set_workspace、mcp_manage。"
+                            + "禁止写文件、edit、delete 或运行 bash。mcp_manage 仅建议用 status；改配置请切 default/auto-confirm。";
             case DEFAULT ->
                     "工具：全开。可编辑/删除工作区文件；可用 set_workspace 切换本会话工具根目录。"
-                            + "运行 bash、delete 或 set_workspace 前需要用户确认。";
-            case AUTO_CONFIRM -> "工具：全开且自动批准（无需确认），含 set_workspace。";
+                            + "运行 bash、delete、set_workspace、mcp_manage 或 mcp__* 前需要用户确认。";
+            case AUTO_CONFIRM -> "工具：全开且自动批准（无需确认），含 set_workspace、mcp_manage 与 mcp__*。";
         };
     }
 }

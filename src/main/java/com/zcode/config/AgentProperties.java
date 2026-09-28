@@ -13,8 +13,15 @@ public record AgentProperties(
         /** chat | read-only | default | auto-confirm */
         String permissionMode
 ) {
+    /**
+     * Agent tool-loop cap. {@code <= 0} = unlimited (no {@code maxIterations} error).
+     */
     public int safeMaxIterations() {
-        return maxIterations <= 0 ? 20 : maxIterations;
+        return maxIterations <= 0 ? Integer.MAX_VALUE : maxIterations;
+    }
+
+    public boolean hasIterationCap() {
+        return maxIterations > 0;
     }
 
     public int safeBashTimeoutSeconds() {

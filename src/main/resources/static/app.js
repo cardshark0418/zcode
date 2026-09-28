@@ -17,6 +17,9 @@
     pendingRestoreForce: false,
     undoAvailable: false,
     editingProviderId: null,
+    editingMcpName: null,
+    mcpToolOpen: {},
+    uiSelects: {},
     settingsTab: "general",
     mention: {
       open: false,
@@ -104,9 +107,30 @@
     );
   }
 
-  function scrollBottom() {
-    scrollport.scrollTop = scrollport.scrollHeight;
+  /** Stay pinned only while the viewport is already near the bottom. */
+  const STICK_BOTTOM_PX = 80;
+  let stickToBottom = true;
+
+  function nearBottom() {
+    return (
+      scrollport.scrollHeight - scrollport.scrollTop - scrollport.clientHeight <=
+      STICK_BOTTOM_PX
+    );
   }
+
+  function scrollBottom(force = false) {
+    if (!force && !stickToBottom) return;
+    scrollport.scrollTop = scrollport.scrollHeight;
+    stickToBottom = true;
+  }
+
+  scrollport.addEventListener(
+    "scroll",
+    () => {
+      stickToBottom = nearBottom();
+    },
+    { passive: true }
+  );
 
   function hideHero() {
     if (hero) hero.style.display = "none";
@@ -518,7 +542,7 @@
     };
     transcript.appendChild(wrap);
     if (eventId) attachCheckpointBtn(wrap, eventId);
-    scrollBottom();
+    scrollBottom(true);
     return wrap;
   }
 
@@ -862,23 +886,222 @@
     renderGeneralSettings();
     renderSkillsSettings();
     renderLlmForm(state.meta.llm || {});
+    renderMcpForm(state.meta.mcp || {});
   }
 
   function renderGeneralSettings() {
-    const modeSel = $("settingsMode");
-    if (!modeSel) return;
     const mode = (state.meta && state.meta.permissionMode) || "";
-    modeSel.innerHTML = "";
-    (state.meta.modes || []).forEach((m) => {
-      const opt = document.createElement("option");
-      opt.value = m.id;
-      opt.textContent = `${m.id} — ${m.description || ""}`;
-      if (m.id === mode) opt.selected = true;
-      modeSel.appendChild(opt);
-    });
+    const opts = ((state.meta && state.meta.modes) || []).map((m) => ({
+      value: m.id,
+      label: `${m.id} — ${m.description || ""}`,
+    }));
+    const sel = state.uiSelects.settingsMode;
+    if (sel) {
+      sel.setOptions(opts);
+      if (mode) sel.setValue(mode, false);
+    }
     $("settingsWorkspace").textContent = (state.meta && state.meta.workspace) || "—";
     $("settingsModelLabel").textContent = (state.meta && state.meta.model) || "—";
-    $("settingsTools").textContent = ((state.meta && state.meta.tools) || []).join(", ") || "—";
+    renderToolsCatalog((state.meta && state.meta.tools) || []);
+  }
+
+  function closeAllUiSelects() {
+    Object.values(state.uiSelects).forEach((s) => s && s.close && s.close());
+  }
+
+  function mountUiSelect(key, initialOptions) {
+    const root = document.querySelector(`[data-ui-select="${key}"]`);
+    if (!root) return null;
+    const hidden = root.querySelector('input[type="hidden"]');
+    const trigger = root.querySelector(".ui-select-trigger");
+    const label = root.querySelector(".ui-select-label");
+    const menu = root.querySelector(".ui-select-menu");
+    if (!hidden || !trigger || !label || !menu) return null;
+
+    let options = Array.isArray(initialOptions) ? initialOptions.slice() : [];
+
+    function syncLabel() {
+      const opt = options.find((o) => o.value === hidden.value);
+      label.textContent = opt ? opt.label : hidden.value || "—";
+    }
+
+    function renderMenu() {
+      menu.innerHTML = "";
+      options.forEach((o) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ui-select-option" + (o.value === hidden.value ? " active" : "");
+        btn.setAttribute("role", "option");
+        btn.textContent = o.label;
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          setValue(o.value, true);
+          close();
+        };
+        menu.appendChild(btn);
+      });
+    }
+
+    function close() {
+      menu.classList.add("hidden");
+      trigger.classList.remove("open");
+      trigger.setAttribute("aria-expanded", "false");
+    }
+
+    function open() {
+      closeAllUiSelects();
+      closeAllCfg();
+      renderMenu();
+      menu.classList.remove("hidden");
+      trigger.classList.add("open");
+      trigger.setAttribute("aria-expanded", "true");
+    }
+
+    function setOptions(opts) {
+      options = Array.isArray(opts) ? opts.slice() : [];
+      if (options.length && !options.some((o) => o.value === hidden.value)) {
+        hidden.value = options[0].value;
+      }
+      syncLabel();
+      renderMenu();
+    }
+
+    function setValue(v, fire) {
+      hidden.value = v == null ? "" : String(v);
+      syncLabel();
+      renderMenu();
+      if (fire) {
+        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+
+    function setDisabled(disabled) {
+      trigger.disabled = !!disabled;
+      root.classList.toggle("disabled", !!disabled);
+      if (disabled) close();
+    }
+
+    trigger.onclick = (e) => {
+      e.stopPropagation();
+      if (trigger.disabled) return;
+      if (menu.classList.contains("hidden")) open();
+      else close();
+    };
+    menu.onclick = (e) => e.stopPropagation();
+
+    if (options.length) setOptions(options);
+    else syncLabel();
+
+    const api = {
+      setOptions,
+      setValue,
+      getValue: () => hidden.value,
+      setDisabled,
+      close,
+      syncLabel,
+    };
+    state.uiSelects[key] = api;
+    return api;
+  }
+
+  function initUiSelects() {
+    mountUiSelect("settingsMode", []);
+    mountUiSelect("llmApi", [
+      { value: "anthropic", label: "anthropic" },
+      { value: "openai", label: "openai" },
+    ]);
+    mountUiSelect("mcpTransport", [
+      { value: "http", label: "HTTP（远程）" },
+      { value: "stdio", label: "stdio（本地命令）" },
+    ]);
+  }
+
+  function parseMcpToolName(name) {
+    // mcp__server__rest… (rest may contain __)
+    if (!name || !name.startsWith("mcp__")) return null;
+    const rest = name.slice("mcp__".length);
+    const i = rest.indexOf("__");
+    if (i <= 0) return null;
+    return { server: rest.slice(0, i), tool: rest.slice(i + 2), full: name };
+  }
+
+  function renderToolsCatalog(tools) {
+    const root = $("settingsTools");
+    if (!root) return;
+    root.innerHTML = "";
+    const list = Array.isArray(tools) ? tools : [];
+    if (!list.length) {
+      root.textContent = "—";
+      return;
+    }
+
+    const builtin = [];
+    const byServer = new Map();
+    list.forEach((name) => {
+      const mcp = parseMcpToolName(name);
+      if (!mcp) {
+        builtin.push(name);
+        return;
+      }
+      if (!byServer.has(mcp.server)) byServer.set(mcp.server, []);
+      byServer.get(mcp.server).push(mcp);
+    });
+
+    if (builtin.length) {
+      const section = document.createElement("div");
+      section.className = "tool-group";
+      const label = document.createElement("div");
+      label.className = "tool-group-label";
+      label.textContent = `内置（${builtin.length}）`;
+      section.appendChild(label);
+      const chips = document.createElement("div");
+      chips.className = "tool-chip-row";
+      builtin.forEach((n) => {
+        const chip = document.createElement("span");
+        chip.className = "tool-chip";
+        chip.textContent = n;
+        chips.appendChild(chip);
+      });
+      section.appendChild(chips);
+      root.appendChild(section);
+    }
+
+    if (!state.mcpToolOpen) state.mcpToolOpen = {};
+
+    byServer.forEach((items, server) => {
+      const open = !!state.mcpToolOpen[server];
+      const details = document.createElement("details");
+      details.className = "tool-mcp-group";
+      details.open = open;
+      details.addEventListener("toggle", () => {
+        state.mcpToolOpen[server] = details.open;
+      });
+
+      const summary = document.createElement("summary");
+      summary.className = "tool-mcp-summary";
+      summary.innerHTML = `<span class="tool-mcp-name">mcp · ${escapeHtml(server)}</span><span class="tool-mcp-count">${items.length}</span>`;
+      details.appendChild(summary);
+
+      const chips = document.createElement("div");
+      chips.className = "tool-chip-row mcp";
+      items.forEach((m) => {
+        const chip = document.createElement("span");
+        chip.className = "tool-chip mcp";
+        chip.textContent = m.tool;
+        chip.title = m.full;
+        chips.appendChild(chip);
+      });
+      details.appendChild(chips);
+      root.appendChild(details);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function normalizeSkills(raw) {
@@ -941,6 +1164,9 @@
     if (tab === "skills") {
       renderSkillsSettings();
     }
+    if (tab === "mcp") {
+      renderMcpForm((state.meta && state.meta.mcp) || {});
+    }
   }
 
   function updateSettingsHeadAction() {
@@ -949,9 +1175,192 @@
     if (state.settingsTab === "skills") {
       btn.textContent = "打开 skills 文件夹";
       btn.title = "在资源管理器中打开 .zcode/skills";
+    } else if (state.settingsTab === "mcp") {
+      btn.textContent = "复制 mcp.json 路径";
+      btn.title = "复制 .zcode/mcp.json 路径";
     } else {
       btn.textContent = "打开配置文件";
       btn.title = "复制配置文件路径";
+    }
+  }
+
+  function syncMcpTransportFields() {
+    const http = ($("mcpTransport") && $("mcpTransport").value) === "http";
+    if ($("mcpHttpFields")) $("mcpHttpFields").classList.toggle("hidden", !http);
+    if ($("mcpStdioFields")) $("mcpStdioFields").classList.toggle("hidden", http);
+  }
+
+  function blankMcpServer() {
+    return {
+      name: "",
+      transport: "http",
+      url: "",
+      bearerToken: "",
+      command: "",
+      args: [],
+      cwd: "",
+      disabled: false,
+      ok: false,
+      message: "",
+      toolCount: 0,
+    };
+  }
+
+  function renderMcpForm(mcp) {
+    const servers = (mcp && mcp.servers) || [];
+    if (
+      state.editingMcpName != null &&
+      state.editingMcpName !== "" &&
+      !servers.some((s) => s.name === state.editingMcpName)
+    ) {
+      // keep draft name when adding new
+    } else if (!state.editingMcpName || !servers.some((s) => s.name === state.editingMcpName)) {
+      state.editingMcpName = servers[0] ? servers[0].name : "";
+    }
+    const editing =
+      servers.find((s) => s.name === state.editingMcpName) ||
+      (state.editingMcpName === "" ? blankMcpServer() : servers[0]) ||
+      blankMcpServer();
+
+    const list = $("mcpServerList");
+    if (list) {
+      list.innerHTML = "";
+      servers.forEach((s) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "provider-chip" + (s.name === state.editingMcpName ? " active" : "");
+        const mark = s.ok ? "● " : s.disabled ? "○ " : "✕ ";
+        btn.textContent = mark + s.name;
+        btn.title = (s.message || "") + (s.toolCount ? ` · ${s.toolCount} tools` : "");
+        btn.onclick = () => {
+          state.editingMcpName = s.name;
+          renderMcpForm((state.meta && state.meta.mcp) || mcp);
+        };
+        list.appendChild(btn);
+      });
+    }
+
+    if ($("mcpName")) $("mcpName").value = editing.name || "";
+    if ($("mcpTransport")) {
+      const t = editing.transport === "stdio" ? "stdio" : "http";
+      if (state.uiSelects.mcpTransport) state.uiSelects.mcpTransport.setValue(t, false);
+      else $("mcpTransport").value = t;
+    }
+    if ($("mcpUrl")) $("mcpUrl").value = editing.url || "";
+    if ($("mcpBearer")) $("mcpBearer").value = editing.bearerToken || "";
+    if ($("mcpCommand")) $("mcpCommand").value = editing.command || "";
+    if ($("mcpArgs")) {
+      $("mcpArgs").value = Array.isArray(editing.args) ? editing.args.join(" ") : "";
+    }
+    if ($("mcpCwd")) $("mcpCwd").value = editing.cwd || "";
+    if ($("mcpDisabled")) $("mcpDisabled").checked = !!editing.disabled;
+    syncMcpTransportFields();
+
+    const status = $("mcpStatus");
+    if (status) {
+      status.className = "llm-status";
+      if (!editing.name) {
+        status.textContent = "新建 server";
+      } else if (editing.disabled) {
+        status.textContent = "已禁用";
+        status.classList.add("warn");
+      } else if (editing.ok) {
+        status.textContent = `已连接 · ${editing.toolCount || 0} tools`;
+        status.classList.add("ok");
+      } else {
+        status.textContent = editing.message || "未连接";
+        status.classList.add("err");
+      }
+    }
+  }
+
+  function collectMcpBody() {
+    const name = ($("mcpName") && $("mcpName").value.trim()) || "";
+    const transport = ($("mcpTransport") && $("mcpTransport").value) || "http";
+    const disabled = !!($("mcpDisabled") && $("mcpDisabled").checked);
+    if (transport === "http") {
+      return {
+        name,
+        url: ($("mcpUrl") && $("mcpUrl").value.trim()) || "",
+        bearerToken: ($("mcpBearer") && $("mcpBearer").value.trim()) || "",
+        disabled,
+      };
+    }
+    const argsRaw = ($("mcpArgs") && $("mcpArgs").value.trim()) || "";
+    return {
+      name,
+      command: ($("mcpCommand") && $("mcpCommand").value.trim()) || "",
+      args: argsRaw ? argsRaw.split(/\s+/).filter(Boolean) : [],
+      cwd: ($("mcpCwd") && $("mcpCwd").value.trim()) || "",
+      disabled,
+    };
+  }
+
+  async function saveMcp() {
+    const body = collectMcpBody();
+    if (!body.name) {
+      addStatus("请填写 MCP 名称");
+      return;
+    }
+    try {
+      const mcp = await api("/api/mcp/servers", { method: "POST", body: JSON.stringify(body) });
+      state.editingMcpName = body.name;
+      if (state.meta) state.meta.mcp = mcp;
+      renderMcpForm(mcp);
+      await loadMeta();
+    } catch (e) {
+      addStatus("保存 MCP 失败 · " + (e.message || e));
+    }
+  }
+
+  async function deleteMcp() {
+    const name = ($("mcpName") && $("mcpName").value.trim()) || state.editingMcpName;
+    if (!name) return;
+    if (!confirm(`删除 MCP server「${name}」？`)) return;
+    try {
+      const mcp = await api(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: "DELETE" });
+      state.editingMcpName = null;
+      if (state.meta) state.meta.mcp = mcp;
+      renderMcpForm(mcp);
+      await loadMeta();
+    } catch (e) {
+      addStatus("删除 MCP 失败 · " + (e.message || e));
+    }
+  }
+
+  async function reloadMcp() {
+    try {
+      const mcp = await api("/api/mcp/reload", { method: "POST", body: "{}" });
+      if (state.meta) state.meta.mcp = mcp;
+      renderMcpForm(mcp);
+      await loadMeta();
+    } catch (e) {
+      addStatus("重新加载 MCP 失败 · " + (e.message || e));
+    }
+  }
+
+  function addMcpServer() {
+    state.editingMcpName = "";
+    renderMcpForm((state.meta && state.meta.mcp) || {});
+    if ($("mcpName")) {
+      $("mcpName").value = "";
+      $("mcpName").focus();
+    }
+  }
+
+  function presetGithubMcp() {
+    state.editingMcpName = "github";
+    if ($("mcpName")) $("mcpName").value = "github";
+    if (state.uiSelects.mcpTransport) state.uiSelects.mcpTransport.setValue("http", false);
+    else if ($("mcpTransport")) $("mcpTransport").value = "http";
+    if ($("mcpUrl")) $("mcpUrl").value = "https://api.githubcopilot.com/mcp/";
+    if ($("mcpBearer")) $("mcpBearer").value = "${GITHUB_PERSONAL_ACCESS_TOKEN}";
+    if ($("mcpDisabled")) $("mcpDisabled").checked = false;
+    syncMcpTransportFields();
+    const status = $("mcpStatus");
+    if (status) {
+      status.className = "llm-status warn";
+      status.textContent = "已填入 GitHub 推荐，点「保存并连接」";
     }
   }
 
@@ -994,6 +1403,9 @@
     if (idEl) idEl.value = editing.id || "";
     nameEl.value = editing.name || "";
     apiEl.value = editing.api === "openai" ? "openai" : "anthropic";
+    if (state.uiSelects.llmApi) {
+      state.uiSelects.llmApi.setValue(apiEl.value, false);
+    }
     baseEl.value = editing.baseUrl || "";
     modelEl.value = editing.model || "";
     keyEl.value = "";
@@ -1002,7 +1414,11 @@
       : "输入 API Key";
 
     const isActive = editing.id === activeId;
-    apiEl.disabled = !!llm.apiLocked && isActive;
+    if (state.uiSelects.llmApi) {
+      state.uiSelects.llmApi.setDisabled(!!llm.apiLocked && isActive);
+    } else {
+      apiEl.disabled = !!llm.apiLocked && isActive;
+    }
     baseEl.disabled = !!llm.baseUrlLocked && isActive;
     keyEl.disabled = !!llm.apiKeyLocked && isActive;
     modelEl.disabled = !!llm.modelLocked && isActive;
@@ -1153,8 +1569,22 @@
   function onSettingsHeadAction() {
     if (state.settingsTab === "skills") {
       openSkillsFolder();
+    } else if (state.settingsTab === "mcp") {
+      copyMcpConfigPath();
     } else {
       copyLlmSettingsPath();
+    }
+  }
+
+  async function copyMcpConfigPath() {
+    const path =
+      (state.meta && state.meta.mcp && state.meta.mcp.config) ||
+      ".zcode/mcp.json";
+    try {
+      await navigator.clipboard.writeText(path);
+      addStatus("已复制 · " + path);
+    } catch {
+      addStatus("路径 · " + path);
     }
   }
 
@@ -1233,6 +1663,7 @@
         pill.setAttribute("aria-expanded", "false");
       }
     });
+    closeAllUiSelects();
   }
 
   function toggleCfg(key) {
@@ -1493,7 +1924,7 @@
       }
       renderSessionList();
       await refreshUndoBar();
-      scrollBottom();
+      scrollBottom(true);
     } catch (e) {
       addStatus("打开会话失败 · " + (e.message || e));
     }
@@ -1537,7 +1968,7 @@
       </div>
       <div class="interact-body"></div>
       <div class="interact-options"></div>
-      <input type="text" class="interact-input hidden" placeholder="输入你的回答…" />
+      <input type="text" class="interact-input hidden" placeholder="输入你的回答…" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" />
       <div class="interact-actions">
         <button type="button" class="btn-ghost interact-cancel"></button>
         <button type="button" class="btn-primary interact-ok"></button>
@@ -1940,6 +2371,12 @@
   $("btnAddProvider").onclick = () => addProvider();
   $("btnDeleteProvider").onclick = () => deleteProvider();
   $("btnUseProvider").onclick = () => useProvider();
+  $("btnSaveMcp").onclick = () => saveMcp();
+  $("btnDeleteMcp").onclick = () => deleteMcp();
+  $("btnReloadMcp").onclick = () => reloadMcp();
+  $("btnAddMcpServer").onclick = () => addMcpServer();
+  $("btnMcpPresetGithub").onclick = () => presetGithubMcp();
+  if ($("mcpTransport")) $("mcpTransport").onchange = () => syncMcpTransportFields();
   $("btnOpenLlmFile").onclick = () => onSettingsHeadAction();
   document.querySelectorAll(".settings-nav-item").forEach((btn) => {
     btn.onclick = () => setSettingsTab(btn.dataset.settingsTab);
@@ -1993,8 +2430,20 @@
     if (e.key === "Escape") closeAllCfg();
   });
 
+  function disableSpellcheckEverywhere() {
+    document.querySelectorAll("input, textarea").forEach((el) => {
+      el.setAttribute("spellcheck", "false");
+      if (el.tagName === "TEXTAREA" || el.type === "text" || el.type === "search" || el.type === "url" || el.type === "password" || !el.type) {
+        el.setAttribute("autocorrect", "off");
+        el.setAttribute("autocapitalize", "off");
+      }
+    });
+  }
+
   (async () => {
     try {
+      disableSpellcheckEverywhere();
+      initUiSelects();
       await loadMeta();
       await ensureSession();
       await refreshSessions();

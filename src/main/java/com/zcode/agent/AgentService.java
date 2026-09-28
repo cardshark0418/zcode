@@ -190,7 +190,10 @@ public class AgentService {
             return new AgentOutcome(lastText, List.copyOf(persisted));
         }
 
-        throw new IllegalStateException("agent exceeded maxIterations=" + maxIter);
+        throw new IllegalStateException(
+                "agent exceeded maxIterations="
+                        + maxIter
+                        + " (set zcode.agent.max-iterations=0 for unlimited)");
     }
 
     /** Public for request.header logging / trajectory projection. */
@@ -249,6 +252,11 @@ public class AgentService {
                     .append("禁止声称自己没有网络或查不了。\n");
             sb.append("- todowrite：多步骤任务。ask_user：仅用于需要用户拍板的选择。")
                     .append("skill：匹配时加载已列出的技能。\n");
+            sb.append("- mcp_manage：自助配置 MCP（status/upsert/remove/reload）。支持 stdio 与远程 HTTP（Bearer/headers）；")
+                    .append("OAuth 浏览器登录暂不支持。用户要连任意平台的 MCP 时：先 skill mcp-setup，")
+                    .append("按发现流程查官方连法（云产品优先远程 url，勿默认 npx）；读 catalog.md 速查；")
+                    .append("失败则换传输，禁止同一错误配置反复 upsert。改配置后 reload，新 mcp__* 下一轮可用。\n");
+            sb.append("- mcp__*：已连接 MCP Server 暴露的工具；default 模式调用前需确认。\n");
             sb.append("- 工具/命令非零退出视为失败（用户主动中断除外）；简要报告错误并自行恢复或询问用户。\n");
         }
         sb.append('\n');

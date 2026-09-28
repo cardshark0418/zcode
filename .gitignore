@@ -23,8 +23,18 @@ last-compact-request.json
 .zcode/zcode.jar
 .zcode/zcode.cmd
 .zcode/llm.json
+.zcode/mcp.json
+.zcode/node_modules/
+.zcode/package.json
+.zcode/package-lock.json
 .zcode/last-chat-request.json
 .zcode/last-compact-request.json
 .zcode/**/*.ckpt/
 !.zcode/skills/
 !.zcode/skills/**/
+
+# local scratch
+t.md
+t.txt
+test-git-*.txt
+_liuchang_resume.pdf

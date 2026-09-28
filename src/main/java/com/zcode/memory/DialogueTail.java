@@ -13,7 +13,7 @@ public final class DialogueTail {
 
     /**
      * @param retainTokens max estimated tokens for the tail (at least one plain-user turn kept when possible)
-     * @param maxTurns max plain-user turns in the tail (hard cap)
+     * @param maxTurns max plain-user turns in the tail; {@code <= 0} means no turn-count cap
      */
     public static List<ChatMessage> select(List<ChatMessage> dialogue, int retainTokens, int maxTurns) {
         if (dialogue == null || dialogue.isEmpty()) {
@@ -29,13 +29,14 @@ public final class DialogueTail {
             return trimToTokensFromEnd(dialogue, Math.max(1, retainTokens));
         }
 
-        int turnCap = Math.max(1, maxTurns);
+        boolean turnCapped = maxTurns > 0;
+        int turnCap = turnCapped ? maxTurns : Integer.MAX_VALUE;
         int tokenCap = Math.max(1, retainTokens);
         int chosen = plainUserIdx.size() - 1; // at least newest user turn
 
         for (int t = plainUserIdx.size() - 2; t >= 0; t--) {
             int plainCount = plainUserIdx.size() - t;
-            if (plainCount > turnCap) {
+            if (turnCapped && plainCount > turnCap) {
                 break;
             }
             int start = plainUserIdx.get(t);

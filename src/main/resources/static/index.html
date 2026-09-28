@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="light" spellcheck="false">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -23,7 +23,7 @@
       </button>
       <div class="session-search-wrap">
         <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input type="search" id="sessionSearch" class="session-search" placeholder="搜索会话…" autocomplete="off" />
+        <input type="search" id="sessionSearch" class="session-search" placeholder="搜索会话…" autocomplete="off"  spellcheck="false"/>
       </div>
       <div class="session-list" id="sessionList"></div>
       <div class="sidebar-foot">
@@ -67,7 +67,7 @@
           <div class="trace-toolbar">
             <div class="trace-search-wrap">
               <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-              <input type="search" id="traceSearch" class="trace-search" placeholder="搜索轨迹…" autocomplete="off" />
+              <input type="search" id="traceSearch" class="trace-search" placeholder="搜索轨迹…" autocomplete="off"  spellcheck="false"/>
             </div>
             <span class="muted" id="traceMeta">runtime events</span>
             <button type="button" class="btn-ghost sm" id="btnRefreshTrace">
@@ -89,7 +89,7 @@
           </div>
           <div class="composer-card">
             <div class="mention-popup hidden" id="mentionPopup" role="listbox" aria-label="引用文件"></div>
-            <textarea id="input" rows="2" placeholder="给 zcode 发消息… 输入 @ 引用文件" ></textarea>
+            <textarea id="input" rows="2" placeholder="给 zcode 发消息… 输入 @ 引用文件" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
             <div class="composer-bar">
               <div class="composer-left">
                 <div class="cfg-wrap" id="modelWrap">
@@ -146,6 +146,10 @@
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
             <span>模型</span>
           </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="mcp">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h8v8H8z"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            <span>MCP</span>
+          </button>
           <button type="button" class="settings-nav-item" data-settings-tab="skills">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 4.5L19 8.2l-3.5 3.4.8 4.9L12 14.8 7.7 16.5l.8-4.9L5 8.2l4.8-.7L12 3z"/></svg>
             <span>Skills</span>
@@ -158,7 +162,14 @@
                 <div class="settings-row-title">权限</div>
                 <div class="settings-row-desc">控制工具是否可用及是否需确认</div>
               </div>
-              <select id="settingsMode" class="settings-control"></select>
+              <div class="ui-select" id="settingsModeSelect" data-ui-select="settingsMode">
+                <button type="button" class="ui-select-trigger" id="settingsModeTrigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="ui-select-label" id="settingsModeLabel">—</span>
+                  <svg class="ico ui-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ui-select-menu hidden" id="settingsModeMenu" role="listbox"></div>
+                <input type="hidden" id="settingsMode" value="" />
+              </div>
             </div>
             <div class="settings-row">
               <div class="settings-row-copy">
@@ -174,12 +185,12 @@
               </div>
               <div class="settings-value" id="settingsModelLabel">—</div>
             </div>
-            <div class="settings-row">
+            <div class="settings-row settings-row-stack">
               <div class="settings-row-copy">
                 <div class="settings-row-title">工具</div>
-                <div class="settings-row-desc">当前权限下可用的工具</div>
+                <div class="settings-row-desc">内置平铺；MCP 按 server 展开</div>
               </div>
-              <div class="settings-value" id="settingsTools">—</div>
+              <div class="tool-catalog" id="settingsTools" aria-label="可用工具"></div>
             </div>
           </section>
 
@@ -195,38 +206,42 @@
                 <div class="settings-row-title">显示名称</div>
                 <div class="settings-row-desc">列表与切换器里显示的名字</div>
               </div>
-              <input type="text" id="llmName" class="settings-control wide" placeholder="例如 DeepSeek" autocomplete="off" />
+              <input type="text" id="llmName" class="settings-control wide" placeholder="例如 DeepSeek" autocomplete="off"  spellcheck="false"/>
             </div>
             <div class="settings-row">
               <div class="settings-row-copy">
                 <div class="settings-row-title">API 协议</div>
                 <div class="settings-row-desc">anthropic 走 Messages；openai 走 Chat Completions</div>
               </div>
-              <select id="llmApi" class="settings-control">
-                <option value="anthropic">anthropic</option>
-                <option value="openai">openai</option>
-              </select>
+              <div class="ui-select" id="llmApiSelect" data-ui-select="llmApi">
+                <button type="button" class="ui-select-trigger" id="llmApiTrigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="ui-select-label" id="llmApiLabel">anthropic</span>
+                  <svg class="ico ui-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ui-select-menu hidden" id="llmApiMenu" role="listbox"></div>
+                <input type="hidden" id="llmApi" value="anthropic" />
+              </div>
             </div>
             <div class="settings-row">
               <div class="settings-row-copy">
                 <div class="settings-row-title">API 地址</div>
                 <div class="settings-row-desc">Base URL，不含具体路径</div>
               </div>
-              <input type="url" id="llmBaseUrl" class="settings-control wide" placeholder="https://api.example.com" autocomplete="off" />
+              <input type="url" id="llmBaseUrl" class="settings-control wide" placeholder="https://api.example.com" autocomplete="off"  spellcheck="false"/>
             </div>
             <div class="settings-row">
               <div class="settings-row-copy">
                 <div class="settings-row-title">API Key</div>
                 <div class="settings-row-desc" id="llmKeyHint">密钥不会回显；留空则保留已有配置</div>
               </div>
-              <input type="password" id="llmApiKey" class="settings-control wide" placeholder="输入 API Key" autocomplete="off" />
+              <input type="password" id="llmApiKey" class="settings-control wide" placeholder="输入 API Key" autocomplete="off"  spellcheck="false"/>
             </div>
             <div class="settings-row">
               <div class="settings-row-copy">
                 <div class="settings-row-title">模型</div>
                 <div class="settings-row-desc">请求使用的模型名称</div>
               </div>
-              <input type="text" id="llmModel" class="settings-control wide" placeholder="claude-opus-4-6" autocomplete="off" />
+              <input type="text" id="llmModel" class="settings-control wide" placeholder="claude-opus-4-6" autocomplete="off"  spellcheck="false"/>
             </div>
             <div class="settings-panel-foot">
               <div class="llm-foot-left">
@@ -236,6 +251,94 @@
               <div class="llm-foot-right">
                 <button type="button" class="btn-ghost sm" id="btnUseProvider">设为当前</button>
                 <button type="button" class="btn-primary" id="btnSaveLlm">保存</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="mcp" id="settingsPanelMcp">
+            <p class="muted settings-intro">添加远程 HTTP 或本地 stdio MCP，保存后自动热加载。Token 推荐写 <code>${ENV}</code>，在启动环境里设好变量。</p>
+            <div class="provider-toolbar">
+              <div class="provider-list" id="mcpServerList"></div>
+              <div class="mcp-toolbar-actions">
+                <button type="button" class="btn-ghost sm" id="btnMcpPresetGithub" title="填入 GitHub 远程 MCP">GitHub</button>
+                <button type="button" class="btn-ghost sm" id="btnAddMcpServer">添加</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">名称</div>
+                <div class="settings-row-desc">短 id，工具会变成 mcp__名称__…</div>
+              </div>
+              <input type="text" id="mcpName" class="settings-control wide" placeholder="github" autocomplete="off"  spellcheck="false"/>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">传输</div>
+                <div class="settings-row-desc">云产品优先 HTTP；本地进程用 stdio</div>
+              </div>
+              <div class="ui-select" id="mcpTransportSelect" data-ui-select="mcpTransport">
+                <button type="button" class="ui-select-trigger" id="mcpTransportTrigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="ui-select-label" id="mcpTransportLabel">HTTP（远程）</span>
+                  <svg class="ico ui-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ui-select-menu hidden" id="mcpTransportMenu" role="listbox"></div>
+                <input type="hidden" id="mcpTransport" value="http" />
+              </div>
+            </div>
+            <div id="mcpHttpFields">
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <div class="settings-row-title">URL</div>
+                  <div class="settings-row-desc">Streamable HTTP 端点</div>
+                </div>
+                <input type="url" id="mcpUrl" class="settings-control wide" placeholder="https://api.githubcopilot.com/mcp/" autocomplete="off"  spellcheck="false"/>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <div class="settings-row-title">Bearer Token</div>
+                  <div class="settings-row-desc">可用 ${GITHUB_PERSONAL_ACCESS_TOKEN}</div>
+                </div>
+                <input type="text" id="mcpBearer" class="settings-control wide" placeholder="${GITHUB_PERSONAL_ACCESS_TOKEN}" autocomplete="off"  spellcheck="false"/>
+              </div>
+            </div>
+            <div id="mcpStdioFields" class="hidden">
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <div class="settings-row-title">命令</div>
+                  <div class="settings-row-desc">可执行文件，如 node / uvx</div>
+                </div>
+                <input type="text" id="mcpCommand" class="settings-control wide" placeholder="node" autocomplete="off"  spellcheck="false"/>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <div class="settings-row-title">参数</div>
+                  <div class="settings-row-desc">空格分隔</div>
+                </div>
+                <input type="text" id="mcpArgs" class="settings-control wide" placeholder="scripts/mcp-echo.mjs" autocomplete="off"  spellcheck="false"/>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <div class="settings-row-title">工作目录</div>
+                  <div class="settings-row-desc">可选，默认当前工作区</div>
+                </div>
+                <input type="text" id="mcpCwd" class="settings-control wide" placeholder="" autocomplete="off"  spellcheck="false"/>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <div class="settings-row-title">禁用</div>
+                <div class="settings-row-desc">勾选后保留配置但不连接</div>
+              </div>
+              <label class="settings-check"><input type="checkbox" id="mcpDisabled" /> 禁用此 server</label>
+            </div>
+            <div class="settings-panel-foot">
+              <div class="llm-foot-left">
+                <span class="llm-status" id="mcpStatus">—</span>
+                <button type="button" class="btn-ghost sm" id="btnDeleteMcp">删除</button>
+              </div>
+              <div class="llm-foot-right">
+                <button type="button" class="btn-ghost sm" id="btnReloadMcp">重新加载</button>
+                <button type="button" class="btn-primary" id="btnSaveMcp">保存并连接</button>
               </div>
             </div>
           </section>

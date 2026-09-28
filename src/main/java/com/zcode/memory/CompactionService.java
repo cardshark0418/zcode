@@ -105,7 +105,8 @@ public class CompactionService {
         int estimated = TokenEstimator.estimate(snap.summary())
                 + TokenEstimator.estimateMessages(dialogue)
                 + TokenEstimator.estimate(upcomingUserMessage);
-        boolean overTurns = plainUsers > memoryProperties.safeMaxTurns();
+        boolean overTurns =
+                memoryProperties.hasTurnCap() && plainUsers > memoryProperties.safeMaxTurns();
         boolean overBudget = estimated >= memoryProperties.compactTriggerTokens();
 
         if (!force && !overTurns && !overBudget) {
@@ -117,7 +118,9 @@ public class CompactionService {
         // Force / token-pressure: keep a smaller tail so more history folds into the summary.
         if (force || (overBudget && !overTurns)) {
             retainTokens = Math.max(512, retainTokens / 2);
-            maxTurns = Math.max(2, maxTurns / 2);
+            if (memoryProperties.hasTurnCap()) {
+                maxTurns = Math.max(2, maxTurns / 2);
+            }
         }
 
         List<ChatMessage> tail = DialogueTail.select(dialogue, retainTokens, maxTurns);
@@ -125,7 +128,9 @@ public class CompactionService {
             if (!force) {
                 return false;
             }
-            tail = DialogueTail.select(dialogue, Math.max(512, retainTokens / 2), 2);
+            // Force with no room: drop to a tiny token tail (still no synthetic turn cap if unlimited).
+            int forceTurns = memoryProperties.hasTurnCap() ? 2 : 0;
+            tail = DialogueTail.select(dialogue, Math.max(512, retainTokens / 2), forceTurns);
             if (tail.size() >= dialogue.size()) {
                 return false;
             }

@@ -82,6 +82,16 @@ public class SkillCatalog {
         }
         String raw = Files.readString(info.path(), StandardCharsets.UTF_8);
         String body = stripFrontmatter(raw).trim();
+        Path skillDir = info.path().getParent();
+        if (skillDir != null) {
+            Path catalog = skillDir.resolve("catalog.md");
+            if (Files.isRegularFile(catalog)) {
+                String cat = Files.readString(catalog, StandardCharsets.UTF_8).trim();
+                if (!cat.isEmpty()) {
+                    body = body + "\n\n---\n\n" + cat;
+                }
+            }
+        }
         if (body.length() > MAX_SKILL_CHARS) {
             body = body.substring(0, MAX_SKILL_CHARS) + "\n\n...[skill truncated]";
         }

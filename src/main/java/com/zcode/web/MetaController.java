@@ -4,6 +4,7 @@ import com.zcode.agent.InstructionsLoader;
 import com.zcode.agent.SkillCatalog;
 import com.zcode.config.LlmRuntime;
 import com.zcode.config.ZcodeHome;
+import com.zcode.mcp.McpManager;
 import com.zcode.permission.PermissionMode;
 import com.zcode.permission.PermissionService;
 import com.zcode.tool.ToolRegistry;
@@ -35,6 +36,7 @@ public class MetaController {
     private final SkillCatalog skillCatalog;
     private final EventStore eventStore;
     private final ZcodeHome zcodeHome;
+    private final McpManager mcpManager;
 
     public MetaController(
             LlmRuntime llmRuntime,
@@ -43,7 +45,8 @@ public class MetaController {
             InstructionsLoader instructionsLoader,
             SkillCatalog skillCatalog,
             EventStore eventStore,
-            ZcodeHome zcodeHome) {
+            ZcodeHome zcodeHome,
+            McpManager mcpManager) {
         this.llmRuntime = llmRuntime;
         this.toolRegistry = toolRegistry;
         this.permissionService = permissionService;
@@ -51,6 +54,7 @@ public class MetaController {
         this.skillCatalog = skillCatalog;
         this.eventStore = eventStore;
         this.zcodeHome = zcodeHome;
+        this.mcpManager = mcpManager;
     }
 
     public record ModeBody(String mode) {}
@@ -86,7 +90,53 @@ public class MetaController {
         m.put("skillsDir", zcodeHome.skillsDir().toString());
         m.put("zcodeHome", zcodeHome.home().toString());
         m.put("defaultWorkspace", zcodeHome.workspace().toString());
+        m.put("mcp", mcpManager.describe());
         return m;
+    }
+
+    @GetMapping("/mcp")
+    public Map<String, Object> mcpStatus() {
+        return mcpManager.describe();
+    }
+
+    @PostMapping("/mcp/reload")
+    public Map<String, Object> mcpReload() {
+        mcpManager.refresh();
+        return mcpManager.describe();
+    }
+
+    public record McpUpsertBody(
+            String name,
+            String command,
+            java.util.List<String> args,
+            java.util.Map<String, String> env,
+            String cwd,
+            String url,
+            java.util.Map<String, String> headers,
+            String bearerToken,
+            Boolean disabled) {}
+
+    @PostMapping("/mcp/servers")
+    public Map<String, Object> mcpUpsert(@RequestBody McpUpsertBody body) throws Exception {
+        if (body == null) {
+            throw new IllegalArgumentException("body required");
+        }
+        return mcpManager.upsertAndRefresh(
+                new com.zcode.mcp.McpConfigLoader.UpsertRequest(
+                        body.name(),
+                        body.command(),
+                        body.args(),
+                        body.env(),
+                        body.cwd(),
+                        body.url(),
+                        body.headers(),
+                        body.bearerToken(),
+                        Boolean.TRUE.equals(body.disabled())));
+    }
+
+    @DeleteMapping("/mcp/servers/{name}")
+    public Map<String, Object> mcpRemove(@PathVariable String name) throws Exception {
+        return mcpManager.removeAndRefresh(name);
     }
 
     @GetMapping("/llm")

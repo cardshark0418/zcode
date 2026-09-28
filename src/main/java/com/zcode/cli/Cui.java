@@ -213,6 +213,7 @@ public final class Cui {
         println(CuiStyle.ACCENT_BOLD + "  commands" + CuiStyle.RESET);
         row("/help", "this help");
         row("/tools", "list tools + workspace");
+        row("/mcp", "MCP servers + tools (/mcp reload)");
         row("/skills", "list discovered skills");
         row("/mode", "show permission mode");
         row("/mode X", "chat|read-only|default|auto-confirm");
@@ -233,7 +234,11 @@ public final class Cui {
         println();
         println(CuiStyle.ACCENT_BOLD + "  tools" + CuiStyle.RESET);
         println(CuiStyle.MUTED + "  bash · read · write · edit · delete · glob · grep" + CuiStyle.RESET);
-        println(CuiStyle.MUTED + "  webfetch · websearch · todowrite · ask_user · skill" + CuiStyle.RESET);
+        println(CuiStyle.MUTED + "  webfetch · websearch · todowrite · ask_user · skill · mcp_manage · mcp__*" + CuiStyle.RESET);
+        println();
+        println(CuiStyle.ACCENT_BOLD + "  mcp" + CuiStyle.RESET);
+        println(CuiStyle.MUTED + "  Web: 设置 → MCP（推荐手配，无需手改文件）" + CuiStyle.RESET);
+        println(CuiStyle.MUTED + "  config: .zcode/mcp.json  (see mcp.json.example)" + CuiStyle.RESET);
         println();
         println(CuiStyle.ACCENT_BOLD + "  instructions" + CuiStyle.RESET);
         println(CuiStyle.MUTED + "  ZCODE.md / CLAUDE.md / AGENTS.md (project)" + CuiStyle.RESET);

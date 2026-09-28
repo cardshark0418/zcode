@@ -5,6 +5,7 @@ import com.zcode.agent.InstructionsLoader;
 import com.zcode.agent.SkillCatalog;
 import com.zcode.checkpoint.CheckpointService;
 import com.zcode.config.LlmRuntime;
+import com.zcode.mcp.McpManager;
 import com.zcode.memory.ChatMessage;
 import com.zcode.memory.CompactionService;
 import com.zcode.memory.ContextView;
@@ -45,6 +46,7 @@ public class InteractiveCli {
     private final EventStore eventStore;
     private final PermissionService permissionService;
     private final CheckpointService checkpointService;
+    private final McpManager mcpManager;
 
     private String sessionId;
     private BufferedReader activeReader;
@@ -61,7 +63,8 @@ public class InteractiveCli {
             SkillCatalog skillCatalog,
             EventStore eventStore,
             PermissionService permissionService,
-            CheckpointService checkpointService) {
+            CheckpointService checkpointService,
+            McpManager mcpManager) {
         this.agentService = agentService;
         this.llmProperties = llmProperties;
         this.sessionStore = sessionStore;
@@ -72,6 +75,7 @@ public class InteractiveCli {
         this.eventStore = eventStore;
         this.permissionService = permissionService;
         this.checkpointService = checkpointService;
+        this.mcpManager = mcpManager;
     }
 
     public void start() {
@@ -214,6 +218,9 @@ public class InteractiveCli {
         if ("/tools".equalsIgnoreCase(input)) {
             printTools();
             return true;
+        }
+        if ("/mcp".equalsIgnoreCase(input) || input.toLowerCase().startsWith("/mcp ")) {
+            return cmdMcp(input);
         }
         if ("/skills".equalsIgnoreCase(input)) {
             printSkills();
@@ -516,6 +523,54 @@ public class InteractiveCli {
             System.out.println();
         }
         return true;
+    }
+
+    private boolean cmdMcp(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        String sub = parts.length > 1 ? parts[1].trim().toLowerCase() : "";
+        if ("reload".equals(sub) || "refresh".equals(sub)) {
+            Cui.status("reloading MCP from " + mcpManager.configPath());
+            mcpManager.refresh();
+        }
+        printMcp();
+        return true;
+    }
+
+    private void printMcp() {
+        System.out.println();
+        Cui.status("config  " + mcpManager.configPath());
+        var rows = mcpManager.status();
+        if (rows.isEmpty()) {
+            Cui.status("no MCP servers — copy mcp.json.example to .zcode/mcp.json");
+        } else {
+            for (var row : rows) {
+                boolean ok = Boolean.TRUE.equals(row.get("ok"));
+                String line = row.get("name") + "  "
+                        + (ok ? "ok" : "fail")
+                        + "  tools=" + row.get("toolCount")
+                        + "  " + row.get("message");
+                if (ok) {
+                    System.out.println(CuiStyle.TOOL + "  ● " + CuiStyle.RESET + line);
+                } else {
+                    Cui.status(line);
+                }
+            }
+        }
+        int n = 0;
+        for (String name : toolRegistry.names()) {
+            if (name.startsWith("mcp__")) {
+                if (n == 0) {
+                    System.out.println();
+                    Cui.status("exposed tools");
+                }
+                System.out.println(CuiStyle.TOOL + "  ● " + CuiStyle.RESET + name);
+                n++;
+            }
+        }
+        System.out.println();
+        Cui.status("/mcp reload  — reread config and restart servers");
+        Cui.status("Web UI: 设置 → MCP 可手配（无需手改文件）");
+        System.out.println();
     }
 
     private void printSkills() {

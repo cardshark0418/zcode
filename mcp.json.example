@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "echo": {
+      "command": "node",
+      "args": ["scripts/mcp-echo.mjs"],
+      "disabled": false
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "bearerToken": "${GITHUB_PERSONAL_ACCESS_TOKEN}",
+      "disabled": false,
+      "_comment": "Remote HTTP. Set GITHUB_PERSONAL_ACCESS_TOKEN. Do NOT use npx @modelcontextprotocol/server-github."
+    },
+    "httpecho": {
+      "url": "http://127.0.0.1:8765/",
+      "disabled": true,
+      "_comment": "node scripts/mcp-http-echo.cjs 8765"
+    },
+    "figma-example": {
+      "url": "https://mcp.figma.com/mcp",
+      "disabled": true,
+      "_comment": "OAuth-only for official remote; PAT often 401. See skill mcp-setup + catalog.md for discovery playbook."
+    }
+  }
+}

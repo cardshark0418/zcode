@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record MemoryProperties(
         /** Directory for session JSONL files. Empty = &lt;workspace&gt;/.zcode/sessions */
         String dir,
-        /** Hard cap on plain-user turns kept as raw dialogue (with retain budget). */
+        /** Hard cap on plain-user turns kept as raw dialogue; {@code 0} = unlimited (token budget only). */
         int maxTurns,
         /** Soft token budget for request context (heuristic). */
         int contextBudget,
@@ -22,8 +22,16 @@ public record MemoryProperties(
         /** Absolute raw-tail token budget; 0 = derive from contextBudget * retainRatio. */
         int retainTokens
 ) {
+    /**
+     * Hard cap on plain-user turns in the raw tail. {@code <= 0} = unlimited (token budget only).
+     */
     public int safeMaxTurns() {
-        return maxTurns <= 0 ? 20 : maxTurns;
+        return maxTurns;
+    }
+
+    /** Whether a finite plain-user turn cap is configured. */
+    public boolean hasTurnCap() {
+        return maxTurns > 0;
     }
 
     public int safeContextBudget() {
