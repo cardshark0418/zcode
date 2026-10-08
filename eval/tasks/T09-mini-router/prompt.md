@@ -1,0 +1,1 @@
+Extend `Router` so `handle("GET", "/health")` returns `"ok"`. Unknown routes return `"404"`. Keep existing `/ping` behavior.

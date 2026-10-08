@@ -1,0 +1,9 @@
+﻿{
+  "id": "T04",
+  "slug": "sort-desc",
+  "title": "Fix descending sort",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

@@ -1,0 +1,1 @@
+Add `age` (int) to `Person` with constructor `Person(String name, int age)` and include `"age":N` in `toJson()`. Keep name field. Update any call sites in fixture if needed so Check passes.

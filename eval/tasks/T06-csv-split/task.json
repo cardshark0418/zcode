@@ -1,0 +1,9 @@
+﻿{
+  "id": "T06",
+  "slug": "csv-split",
+  "title": "Fix CSV field split",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

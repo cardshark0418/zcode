@@ -36,6 +36,24 @@ zcode:
   trace:
     enabled: ${ZCODE_TRACE_ENABLED:true}
     preview-chars: ${ZCODE_TRACE_PREVIEW_CHARS:500}
+  code-index:
+    # Semantic code_search tool (requires local Qdrant + embedding API)
+    enabled: ${ZCODE_CODE_INDEX_ENABLED:true}
+    qdrant-url: ${ZCODE_QDRANT_URL:http://127.0.0.1:6333}
+    top-k: ${ZCODE_CODE_INDEX_TOP_K:8}
+    small-file-max-lines: 400
+    window-lines: 200
+    overlap-lines: 40
+    max-files-per-sync: 32
+    max-sync-ms: 15000
+    max-file-bytes: 1000000
+    embed:
+      # OpenAI-compatible /v1/embeddings; falls back to zcode.llm.base-url / api-key if empty
+      base-url: ${ZCODE_EMBED_BASE_URL:}
+      api-key: ${ZCODE_EMBED_API_KEY:}
+      model: ${ZCODE_EMBED_MODEL:text-embedding-3-small}
+      timeout-seconds: 60
+
 
 spring:
   application:

@@ -1,0 +1,9 @@
+﻿{
+  "id": "T02",
+  "slug": "null-safe-name",
+  "title": "Null-safe display name",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

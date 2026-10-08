@@ -1,0 +1,1 @@
+`Stats.avg` should return the average of ints as double. Empty array -> 0.0. Run the failing Check logic in your head and fix Stats.java. Do not change Check.java.

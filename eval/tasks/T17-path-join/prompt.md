@@ -1,0 +1,1 @@
+`Paths2.join(a,b)` should join with `/` and avoid duplicate slashes when `a` ends with `/` or `b` starts with `/`.

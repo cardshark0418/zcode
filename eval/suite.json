@@ -1,0 +1,43 @@
+{
+  "name": "zcode-eval-v1",
+  "version": 1,
+  "description": "20 small Java coding tasks for measuring zcode agent success rate",
+  "agent": {
+    "command": "bin/zcode.cmd",
+    "mode": "run",
+    "permissionMode": "auto-confirm",
+    "maxIterationsEnv": "ZCODE_AGENT_MAX_ITERATIONS",
+    "recommendedMaxIterations": 40
+  },
+  "scoring": {
+    "pass": "verify.ps1 exit 0 after agent run",
+    "fail_categories": [
+      "verify_failed",
+      "agent_error",
+      "timeout",
+      "precheck_already_pass"
+    ]
+  },
+  "tasks": [
+    {"id": "T01", "slug": "off-by-one", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T02", "slug": "null-safe-name", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T03", "slug": "counter-increment", "category": "feature", "difficulty": "easy"},
+    {"id": "T04", "slug": "sort-desc", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T05", "slug": "calculator-impl", "category": "feature", "difficulty": "easy"},
+    {"id": "T06", "slug": "csv-split", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T07", "slug": "rename-method", "category": "refactor", "difficulty": "medium"},
+    {"id": "T08", "slug": "fizzbuzz", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T09", "slug": "mini-router", "category": "feature", "difficulty": "medium"},
+    {"id": "T10", "slug": "json-key-typo", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T11", "slug": "config-port", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T12", "slug": "email-validate", "category": "feature", "difficulty": "medium"},
+    {"id": "T13", "slug": "equals-null", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T14", "slug": "unique-preserve", "category": "bugfix", "difficulty": "medium"},
+    {"id": "T15", "slug": "filter-even", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T16", "slug": "mini-stack", "category": "feature", "difficulty": "medium"},
+    {"id": "T17", "slug": "path-join", "category": "bugfix", "difficulty": "easy"},
+    {"id": "T18", "slug": "sql-placeholder", "category": "bugfix", "difficulty": "medium"},
+    {"id": "T19", "slug": "dto-age", "category": "feature", "difficulty": "easy"},
+    {"id": "T20", "slug": "fix-from-error", "category": "bugfix", "difficulty": "medium"}
+  ]
+}

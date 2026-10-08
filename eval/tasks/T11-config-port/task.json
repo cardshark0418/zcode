@@ -1,0 +1,9 @@
+﻿{
+  "id": "T11",
+  "slug": "config-port",
+  "title": "Fix default server port",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

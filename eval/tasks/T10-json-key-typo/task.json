@@ -1,0 +1,9 @@
+﻿{
+  "id": "T10",
+  "slug": "json-key-typo",
+  "title": "Fix JSON key typo in serializer",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

@@ -1,0 +1,1 @@
+`UserDao.findByIdSql` currently concatenates id into SQL (unsafe). Return a SQL string that uses a single `?` placeholder instead of embedding the id value. The method signature stays the same for API compat but the returned SQL must NOT contain the numeric id digits from the argument.

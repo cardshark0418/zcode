@@ -1,0 +1,9 @@
+﻿{
+  "id": "T08",
+  "slug": "fizzbuzz",
+  "title": "Fix FizzBuzz",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

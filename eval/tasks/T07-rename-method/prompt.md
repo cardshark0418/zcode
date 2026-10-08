@@ -1,0 +1,1 @@
+`Legacy.greetOld` is deprecated. Update `App.java` to call `Legacy.greet` instead, with the same arguments. Do not change Check.java. You may leave greetOld in Legacy.

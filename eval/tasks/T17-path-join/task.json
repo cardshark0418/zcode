@@ -1,0 +1,9 @@
+﻿{
+  "id": "T17",
+  "slug": "path-join",
+  "title": "Fix path join",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

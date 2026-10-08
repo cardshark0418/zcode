@@ -1,0 +1,9 @@
+﻿{
+  "id": "T13",
+  "slug": "equals-null",
+  "title": "Fix Point.equals null-safety",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

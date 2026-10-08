@@ -1,0 +1,9 @@
+﻿{
+  "id": "T20",
+  "slug": "fix-from-error",
+  "title": "Fix bug from failing Check",
+  "category": "bugfix",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

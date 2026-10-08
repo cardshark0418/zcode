@@ -1,0 +1,9 @@
+﻿{
+  "id": "T12",
+  "slug": "email-validate",
+  "title": "Implement simple email check",
+  "category": "feature",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

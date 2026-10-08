@@ -1,0 +1,1 @@
+`Counter.increment()` is unimplemented (returns 0). Make it increase the counter by 1 and return the new value. Do not change Check.java.

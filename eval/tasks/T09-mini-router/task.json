@@ -1,0 +1,9 @@
+﻿{
+  "id": "T09",
+  "slug": "mini-router",
+  "title": "Add GET /health route",
+  "category": "feature",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

@@ -236,7 +236,9 @@ public class AgentService {
         sb.append("## 工具\n");
         sb.append(mode.systemHint()).append('\n');
         if (mode.toolsEnabled()) {
-            sb.append("- 探索优先：改文件或跑命令前，先用 glob / grep / read。\n");
+            sb.append("- 探索优先：改文件或跑命令前，先用 glob / grep / code_search / read。\n");
+            sb.append("- code_search：用不熟悉的自然语言/功能描述做语义检索；已知符号或精确字符串优先 grep。")
+                    .append("需要本机 Qdrant 与 embedding API；失败时改用 grep/glob。\n");
             sb.append("- edit：old_string 必须能唯一匹配（否则设 replace_all=true）。\n");
             sb.append("- write：新建或整文件覆盖；对已有文件的小改动优先用 edit。\n");
             sb.append("- delete：删除工作区内的文件（不要用 bash rm，以便检查点可回滚）。\n");
@@ -312,6 +314,7 @@ public class AgentService {
                 putField(m, "pattern", in, "pattern");
                 putField(m, "path", in, "path");
             }
+            case "code_search" -> putField(m, "query", in, "query");
             case "webfetch" -> putField(m, "url", in, "url");
             case "websearch" -> putField(m, "query", in, "query");
             default -> {

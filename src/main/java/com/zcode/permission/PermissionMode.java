@@ -23,6 +23,7 @@ public enum PermissionMode {
             "read",
             "glob",
             "grep",
+            "code_search",
             "webfetch",
             "websearch",
             "skill",
@@ -124,7 +125,7 @@ public enum PermissionMode {
         return switch (this) {
             case CHAT -> "工具：chat 模式下禁用。仅根据上下文回答，不要调用工具。";
             case READ_ONLY ->
-                    "可用工具：read、glob、grep、webfetch、websearch、skill、ask_user、todowrite、set_workspace、mcp_manage。"
+                    "可用工具：read、glob、grep、code_search、webfetch、websearch、skill、ask_user、todowrite、set_workspace、mcp_manage。"
                             + "禁止写文件、edit、delete 或运行 bash。mcp_manage 仅建议用 status；改配置请切 default/auto-confirm。";
             case DEFAULT ->
                     "工具：全开。可编辑/删除工作区文件；可用 set_workspace 切换本会话工具根目录。"

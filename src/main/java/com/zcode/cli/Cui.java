@@ -233,7 +233,7 @@ public final class Cui {
         println(CuiStyle.MUTED + "  auto-confirm  full tools, auto-approve" + CuiStyle.RESET);
         println();
         println(CuiStyle.ACCENT_BOLD + "  tools" + CuiStyle.RESET);
-        println(CuiStyle.MUTED + "  bash · read · write · edit · delete · glob · grep" + CuiStyle.RESET);
+        println(CuiStyle.MUTED + "  bash · read · write · edit · delete · glob · grep · code_search" + CuiStyle.RESET);
         println(CuiStyle.MUTED + "  webfetch · websearch · todowrite · ask_user · skill · mcp_manage · mcp__*" + CuiStyle.RESET);
         println();
         println(CuiStyle.ACCENT_BOLD + "  mcp" + CuiStyle.RESET);

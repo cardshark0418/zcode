@@ -1,0 +1,1 @@
+`User.label(User)` throws NPE when name is null. Return `"anonymous"` when name is null or blank. Do not change Check.java.

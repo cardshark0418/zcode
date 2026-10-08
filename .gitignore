@@ -24,6 +24,7 @@ last-compact-request.json
 .zcode/zcode.cmd
 .zcode/llm.json
 .zcode/mcp.json
+.zcode/code-index.json
 .zcode/node_modules/
 .zcode/package.json
 .zcode/package-lock.json
@@ -33,8 +34,14 @@ last-compact-request.json
 !.zcode/skills/
 !.zcode/skills/**/
 
+# local Qdrant volume (docker compose)
+data/qdrant/
+
 # local scratch
 t.md
 t.txt
 test-git-*.txt
 _liuchang_resume.pdf
+
+# eval run artifacts
+eval/runs/

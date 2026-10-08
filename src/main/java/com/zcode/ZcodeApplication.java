@@ -1,5 +1,6 @@
 package com.zcode;
 
+import com.zcode.cli.HeadlessRun;
 import com.zcode.cli.InteractiveCli;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -19,7 +20,23 @@ public class ZcodeApplication {
             SpringApplication app = new SpringApplication(ZcodeApplication.class);
             app.setWebApplicationType(WebApplicationType.SERVLET);
             app.setHeadless(false);
-            app.run(stripServe(args));
+            app.run(stripCommand(args));
+            return;
+        }
+
+        if (isRun(args)) {
+            int code;
+            try (ConfigurableApplicationContext ctx = new SpringApplicationBuilder(ZcodeApplication.class)
+                    .web(WebApplicationType.NONE)
+                    .logStartupInfo(false)
+                    .properties(
+                            "spring.main.banner-mode=off",
+                            "logging.level.root=ERROR",
+                            "logging.level.com.zcode=WARN")
+                    .run(stripCommand(args))) {
+                code = ctx.getBean(HeadlessRun.class).execute(stripCommand(args));
+            }
+            System.exit(code);
             return;
         }
 
@@ -45,7 +62,15 @@ public class ZcodeApplication {
         return "serve".equalsIgnoreCase(cmd) || "server".equalsIgnoreCase(cmd);
     }
 
-    private static String[] stripServe(String[] args) {
+    private static boolean isRun(String[] args) {
+        if (args.length == 0) {
+            return false;
+        }
+        String cmd = args[0];
+        return "run".equalsIgnoreCase(cmd) || "eval-run".equalsIgnoreCase(cmd);
+    }
+
+    private static String[] stripCommand(String[] args) {
         if (args.length <= 1) {
             return new String[0];
         }

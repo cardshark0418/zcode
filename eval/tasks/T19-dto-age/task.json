@@ -1,0 +1,9 @@
+﻿{
+  "id": "T19",
+  "slug": "dto-age",
+  "title": "Add age field to Person DTO",
+  "category": "feature",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

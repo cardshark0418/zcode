@@ -1,0 +1,1 @@
+Application should listen on port 8080 by default. `Config.port()` currently returns 8000. Fix it. Do not change Check.java.

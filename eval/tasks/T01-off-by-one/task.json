@@ -1,0 +1,9 @@
+﻿{
+  "id": "T01",
+  "slug": "off-by-one",
+  "title": "Fix off-by-one in sumRange",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

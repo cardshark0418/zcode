@@ -1,0 +1,9 @@
+﻿{
+  "id": "T05",
+  "slug": "calculator-impl",
+  "title": "Implement Calculator",
+  "category": "feature",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

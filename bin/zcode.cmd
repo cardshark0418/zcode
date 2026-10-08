@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-rem zcode launcher — run from repo: bin\zcode.cmd  [serve]
+rem zcode launcher — run from repo: bin\zcode.cmd  [serve|run]
 
 set "PROJECT_ROOT=%~dp0.."
 for %%I in ("%PROJECT_ROOT%") do set "PROJECT_ROOT=%%~fI"

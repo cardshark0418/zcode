@@ -74,6 +74,9 @@ code { font-family: var(--mono); font-size: 0.9em; }
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .sidebar-top {
   display: flex;
@@ -131,6 +134,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
 
 .session-list {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 0 8px 12px;
 }

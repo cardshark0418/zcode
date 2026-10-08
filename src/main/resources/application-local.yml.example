@@ -17,3 +17,14 @@ zcode:
   agent:
     # chat | read-only | default | auto-confirm
     permission-mode: auto-confirm
+  code-index:
+    enabled: true
+    qdrant-url: http://127.0.0.1:6333
+    embed:
+      # 阿里云百炼 OpenAI 兼容（北京）；新加坡用 dashscope-intl.aliyuncs.com
+      # https://help.aliyun.com/zh/model-studio/embedding-interfaces-compatible-with-openai
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: your-dashscope-api-key-here
+      model: text-embedding-v4
+
+

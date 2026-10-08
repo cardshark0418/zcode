@@ -1,0 +1,9 @@
+﻿{
+  "id": "T03",
+  "slug": "counter-increment",
+  "title": "Implement Counter.increment",
+  "category": "feature",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

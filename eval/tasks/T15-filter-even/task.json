@@ -1,0 +1,9 @@
+﻿{
+  "id": "T15",
+  "slug": "filter-even",
+  "title": "Filter even numbers",
+  "category": "bugfix",
+  "difficulty": "easy",
+  "language": "java",
+  "verify": "verify.ps1"
+}

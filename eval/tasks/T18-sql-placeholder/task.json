@@ -1,0 +1,9 @@
+﻿{
+  "id": "T18",
+  "slug": "sql-placeholder",
+  "title": "Use placeholder in SQL template",
+  "category": "bugfix",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

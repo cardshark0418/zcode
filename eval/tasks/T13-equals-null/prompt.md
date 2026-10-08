@@ -1,0 +1,1 @@
+`Point.equals` should return false for null and non-Point, and compare x/y for Points. Fix NPE on null.

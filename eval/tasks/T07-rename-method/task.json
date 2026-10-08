@@ -1,0 +1,9 @@
+﻿{
+  "id": "T07",
+  "slug": "rename-method",
+  "title": "Rename deprecated method usages",
+  "category": "refactor",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

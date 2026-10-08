@@ -1,0 +1,9 @@
+﻿{
+  "id": "T16",
+  "slug": "mini-stack",
+  "title": "Implement MiniStack pop/peek",
+  "category": "feature",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

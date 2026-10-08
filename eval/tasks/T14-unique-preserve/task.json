@@ -1,0 +1,9 @@
+﻿{
+  "id": "T14",
+  "slug": "unique-preserve",
+  "title": "Deduplicate preserving order",
+  "category": "bugfix",
+  "difficulty": "medium",
+  "language": "java",
+  "verify": "verify.ps1"
+}

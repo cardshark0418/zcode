@@ -1,0 +1,1 @@
+Implement `Validators.isEmail`: must contain exactly one `@`, non-empty local and domain, domain contains a dot. No regex required. Null -> false.

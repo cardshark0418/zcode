@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zcode.checkpoint.CheckpointService;
+import com.zcode.index.CodeIndexService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,9 +14,11 @@ import org.springframework.stereotype.Component;
 public class WriteTool implements Tool {
 
     private final CheckpointService checkpointService;
+    private final CodeIndexService codeIndexService;
 
-    public WriteTool(CheckpointService checkpointService) {
+    public WriteTool(CheckpointService checkpointService, CodeIndexService codeIndexService) {
         this.checkpointService = checkpointService;
+        this.codeIndexService = codeIndexService;
     }
 
     @Override
@@ -65,6 +68,7 @@ public class WriteTool implements Tool {
         if (!checkpointService.recordMutate(path, beforeBytes, afterBytes)) {
             out.append("\n\n[warn] 检查点未记录，回滚可能无法还原此文件");
         }
+        codeIndexService.notifyFileChangedAsync(ctx.workspace(), path);
         return ToolResult.ok(out.toString());
     }
 

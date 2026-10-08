@@ -15,3 +15,5 @@ Java coding-agent CLI for this repo. You may edit this repo in-place (dogfood li
 
 - `zcode` — interactive agent CLI
 - `zcode serve` — web UI on http://localhost:8080
+- `zcode run --workspace <dir> --prompt-file <file>` — headless one-shot (eval)
+- Eval suite: `eval/README.md` · `powershell -File eval/run.ps1 -Task T01`
