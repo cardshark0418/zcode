@@ -58,6 +58,7 @@ public class CodeSearchTool implements Tool {
 
         CodeIndexService.SearchOutcome outcome = indexService.search(ctx.workspace(), query.trim());
         if (!outcome.ok()) {
+            // Budget hit: steer model to grep; background drain already scheduled in search().
             return ToolResult.error(outcome.error());
         }
 

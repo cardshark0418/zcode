@@ -17,6 +17,7 @@ public class ZcodeApplication {
         if (isServe(args)) {
             // Needed for in-process folder picker (workspace switch) to show a real UI.
             System.setProperty("java.awt.headless", "false");
+            System.setProperty("zcode.serve", "true");
             SpringApplication app = new SpringApplication(ZcodeApplication.class);
             app.setWebApplicationType(WebApplicationType.SERVLET);
             app.setHeadless(false);

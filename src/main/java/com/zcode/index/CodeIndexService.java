@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +39,8 @@ public class CodeIndexService {
     private final QdrantClient qdrant;
     private final ObjectMapper mapper;
     private final Object lock = new Object();
+    /** Workspace roots currently draining stale files in the background. */
+    private final Set<String> backgroundDrainInFlight = ConcurrentHashMap.newKeySet();
     private final ExecutorService indexExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "zcode-code-index");
         t.setDaemon(true);
@@ -203,6 +206,10 @@ public class CodeIndexService {
             return SearchOutcome.error("index sync failed: " + e.getMessage() + " Use grep/glob meanwhile.");
         }
 
+        if (sync.budgetHit()) {
+            scheduleBackgroundDrain(root);
+        }
+
         CodeIndexManifest manifest;
         synchronized (lock) {
             manifest = CodeIndexManifest.load(mapper, root);
@@ -212,7 +219,12 @@ public class CodeIndexService {
             return SearchOutcome.error(
                     "index is empty or incomplete"
                             + (note.isBlank() ? "" : " (" + note + ")")
-                            + ". Try again after files are indexed, or use grep/glob.");
+                            + ". Prefer grep/glob now; background indexing continues if started.");
+        }
+
+        // Budget exceeded: do not trust incomplete semantic recall — steer model to grep.
+        if (sync.budgetHit()) {
+            return SearchOutcome.budgetExceeded(sync);
         }
 
         List<float[]> qVec;
@@ -230,6 +242,46 @@ public class CodeIndexService {
         }
 
         return SearchOutcome.ok(hits, sync);
+    }
+
+    /**
+     * Keep draining stale files in the background (same single-thread queue as write-path
+     * updates) until caught up or backends fail.
+     */
+    void scheduleBackgroundDrain(Path root) {
+        if (root == null || !props.safeEnabled()) {
+            return;
+        }
+        Path abs = root.toAbsolutePath().normalize();
+        String key = abs.toString();
+        if (!backgroundDrainInFlight.add(key)) {
+            return;
+        }
+        indexExecutor.execute(() -> {
+            try {
+                if (!readyForMutation()) {
+                    log.warn("code-index background drain skipped (backend not ready): {}", key);
+                    return;
+                }
+                int rounds = 0;
+                while (rounds < 64) {
+                    SyncReport report = syncStale(abs);
+                    rounds++;
+                    if (report.stillStale() <= 0) {
+                        log.info("code-index background drain done for {} ({} round(s))", key, rounds);
+                        return;
+                    }
+                    if (!report.budgetHit() && report.updated() == 0 && report.removed() == 0) {
+                        return;
+                    }
+                }
+                log.warn("code-index background drain stopped after max rounds for {}", key);
+            } catch (Exception e) {
+                log.warn("code-index background drain failed for {}: {}", key, e.getMessage());
+            } finally {
+                backgroundDrainInFlight.remove(key);
+            }
+        });
     }
 
     SyncReport syncStale(Path root) throws Exception {
@@ -277,14 +329,15 @@ public class CodeIndexService {
 
             manifest.save(mapper, root);
 
+            int stillStale = Math.max(0, stale.size() - updated);
             String note = "";
             if (budgetHit) {
-                note = "index sync budget hit: updated " + updated + " file(s), ~" + remaining
-                        + " still stale — results may be incomplete";
+                note = "index sync budget hit: updated " + updated + " file(s), ~" + stillStale
+                        + " still stale — prefer grep/glob now; background indexing started";
             } else if (updated > 0 || !toDelete.isEmpty()) {
                 note = "index sync: updated " + updated + ", removed " + toDelete.size();
             }
-            return new SyncReport(updated, toDelete.size(), Math.max(0, stale.size() - updated), note);
+            return new SyncReport(updated, toDelete.size(), stillStale, note, budgetHit);
         }
     }
 
@@ -453,15 +506,30 @@ public class CodeIndexService {
         }
     }
 
-    public record SyncReport(int updated, int removed, int stillStale, String note) {}
+    public record SyncReport(int updated, int removed, int stillStale, String note, boolean budgetHit) {}
 
-    public record SearchOutcome(boolean ok, String error, List<QdrantClient.SearchHit> hits, SyncReport sync) {
+    public record SearchOutcome(
+            boolean ok, String error, List<QdrantClient.SearchHit> hits, SyncReport sync, boolean budgetExceeded) {
         static SearchOutcome ok(List<QdrantClient.SearchHit> hits, SyncReport sync) {
-            return new SearchOutcome(true, null, hits, sync);
+            return new SearchOutcome(true, null, hits, sync, false);
+        }
+
+        static SearchOutcome budgetExceeded(SyncReport sync) {
+            String msg = (sync != null && sync.note() != null && !sync.note().isBlank())
+                    ? sync.note()
+                    : "index sync budget hit";
+            return new SearchOutcome(
+                    false,
+                    msg
+                            + "\nPrefer grep/glob for this turn (symbols, paths, error strings). "
+                            + "Background indexing continues; retry code_search later.",
+                    List.of(),
+                    sync,
+                    true);
         }
 
         static SearchOutcome error(String msg) {
-            return new SearchOutcome(false, msg, List.of(), null);
+            return new SearchOutcome(false, msg, List.of(), null, false);
         }
     }
 }

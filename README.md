@@ -79,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File .\bin\qdrant-up.ps1
 | 命令 | 作用 |
 |------|------|
 | `.\bin\zcode.cmd` | 交互式 agent |
-| `.\bin\zcode.cmd serve` | 网页 http://localhost:8080 |
+| `.\bin\zcode.cmd serve` | 网页 http://localhost:8080（就绪后自动打开浏览器；可用 `ZCODE_SERVE_OPEN_BROWSER=false` 关闭） |
 | `.\bin\zcode.cmd run --workspace <dir> --prompt-file <file>` | 无头单轮（eval） |
 | `/help` | 帮助 |
 | `/mode` · `/mode X` | 权限模式 |
